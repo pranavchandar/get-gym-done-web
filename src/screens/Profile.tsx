@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useStore } from '../store/store';
 import { activeDays, sessionLogs } from '../store/selectors';
 import { maxConsecutiveRestDays } from '../domain/rotation';
+import { currentStreakDays, longestStreakDays } from '../domain/streak';
 import { epochDayLocal, todayEpochDay, formatDateShort } from '../domain/dates';
 import { totalVolumeKg, compactNumber } from '../domain/metrics';
 import { kgToDisplay, formatWeight } from '../domain/units';
@@ -37,6 +38,10 @@ export function ProfileScreen() {
   const sessions = Object.values(state.sessions);
   const completedTraining = sessions.filter((s) => s.completedAt != null && s.notes !== REST_SESSION_NOTE);
   const sessionCount = completedTraining.length;
+
+  const maxRestGap = maxConsecutiveRestDays(activeDays(state));
+  const streak = currentStreakDays(sessions, maxRestGap);
+  const longestStreak = longestStreakDays(sessions, maxRestGap);
 
   const totalVolKg = useMemo(() => totalVolumeKg(Object.values(state.setLogs)), [state.setLogs]);
 
@@ -138,18 +143,6 @@ export function ProfileScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.setLogs, state.sessions]);
 
-  if (sessionCount === 0) {
-    return (
-      <div className="pad stack gap-16" style={{ paddingBottom: 32 }}>
-        <ProfileHeader onEdit={() => setEditing(true)} />
-        <div className="card center muted body-medium" style={{ padding: 32 }}>
-          Finish a workout to start tracking your numbers.
-        </div>
-        {editing && <EditProfileSheet onClose={() => setEditing(false)} onSave={setProfile} />}
-      </div>
-    );
-  }
-
   return (
     <div className="pad stack gap-20" style={{ paddingBottom: 32 }}>
       <ProfileHeader onEdit={() => setEditing(true)} />
@@ -164,6 +157,22 @@ export function ProfileScreen() {
           <div className="label-small muted" style={{ marginTop: 4 }}>Sessions</div>
         </div>
       </div>
+      <div className="row gap-8">
+        <div className="stat-pill">
+          <div className="big">{streak > 0 ? `${streak}d` : '—'}</div>
+          <div className="label-small muted" style={{ marginTop: 4 }}>Streak</div>
+        </div>
+        <div className="stat-pill">
+          <div className="big">{longestStreak > 0 ? `${longestStreak}d` : '—'}</div>
+          <div className="label-small muted" style={{ marginTop: 4 }}>Longest streak</div>
+        </div>
+      </div>
+
+      {sessionCount === 0 && (
+        <div className="card center muted body-medium" style={{ padding: 20 }}>
+          Finish a workout to start tracking your strength numbers. Body metrics can be logged anytime below.
+        </div>
+      )}
 
       <div className="seg">
         {RANGES.map((r) => (
@@ -185,7 +194,10 @@ export function ProfileScreen() {
           <BodyStat label="Body fat" value={fat.curr != null ? `${fat.curr}%` : '—'} prev={fat.prev} curr={fat.curr} invert />
           <BodyStat label="Muscle" value={muscle.curr != null ? `${formatWeight(muscle.curr, unit)}` : '—'} prev={muscle.prev} curr={muscle.curr} />
         </div>
-        {bodyExpanded && (
+        {bodyExpanded && bm.length === 0 && (
+          <div className="center muted body-small mt-16">No entries yet — tap + Log to record your first weigh-in.</div>
+        )}
+        {bodyExpanded && bm.length > 0 && (
           <div className="mt-16">
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
