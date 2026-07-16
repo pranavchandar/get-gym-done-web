@@ -19,7 +19,7 @@ import { formatWeight } from '../domain/units';
 import { REST_SESSION_NOTE } from '../types';
 import { BigCta, GhostCta, Dialog, TrendArrow } from '../components/ui';
 import { Confetti } from '../components/Confetti';
-import { Swap, ArrowRight, Bed, Check, ChevronRight, ChevronUp, ChevronDown, Plus, Trash, Activity } from '../components/icons';
+import { List, ArrowRight, Bed, Check, ChevronRight, ChevronUp, ChevronDown, Plus, Trash, Activity } from '../components/icons';
 import { toast } from '../components/toast';
 
 const ACTIVITY_CHIPS = ['Running', 'Walking', 'Cycling', 'Swimming', 'Pickleball', 'Tennis', 'Table Tennis', 'Basketball', 'Soccer', 'Yoga', 'Hiking'];
@@ -184,7 +184,7 @@ export function HomeScreen() {
               aria-label="Day overview"
               onClick={() => navigate(`/day/${activeSessDay.id}`)}
             >
-              <Swap size={20} />
+              <List size={20} />
             </button>
           </div>
         </div>
@@ -211,7 +211,7 @@ export function HomeScreen() {
               aria-label="Day overview"
               onClick={() => navigate(`/day/${upNext.id}`)}
             >
-              <Swap size={20} />
+              <List size={20} />
             </button>
           </div>
         </div>

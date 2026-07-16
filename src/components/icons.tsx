@@ -56,6 +56,9 @@ export const Check = ({ size, className }: IconProps) => (
 export const Swap = ({ size, className }: IconProps) => (
   <svg {...S(size)} className={className}><polyline points="17 1 21 5 17 9" /><path d="M3 11V9a4 4 0 0 1 4-4h14" /><polyline points="7 23 3 19 7 15" /><path d="M21 13v2a4 4 0 0 1-4 4H3" /></svg>
 );
+export const List = ({ size, className }: IconProps) => (
+  <svg {...S(size)} className={className}><line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" /><line x1="3" y1="6" x2="3.01" y2="6" /><line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" /></svg>
+);
 export const Reset = ({ size, className }: IconProps) => (
   <svg {...S(size)} className={className}><polyline points="1 4 1 10 7 10" /><path d="M3.5 15a9 9 0 1 0 2.1-9.4L1 10" /></svg>
 );
