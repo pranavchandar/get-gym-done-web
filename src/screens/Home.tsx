@@ -10,14 +10,17 @@ import {
   completedByEpochDay,
   activityByEpochDay,
   bodyMetricsSorted,
+  sessionsByEpochDay,
+  sessionLogs,
 } from '../store/selectors';
 import { maxConsecutiveRestDays } from '../domain/rotation';
 import { currentStreakDays } from '../domain/streak';
 import { epochDayLocal, todayEpochDay, WEEKDAY_FULL, MONTH_NAMES } from '../domain/dates';
-import { isTrainingSession } from '../domain/metrics';
-import { formatWeight } from '../domain/units';
+import { isTrainingSession, totalVolumeKg } from '../domain/metrics';
+import { formatWeight, kgToDisplay } from '../domain/units';
 import { REST_SESSION_NOTE } from '../types';
-import { BigCta, GhostCta, Dialog, TrendArrow } from '../components/ui';
+import type { Session } from '../types';
+import { BigCta, GhostCta, Dialog, Sheet, TrendArrow } from '../components/ui';
 import { Confetti } from '../components/Confetti';
 import { List, ArrowRight, Bed, Check, ChevronRight, ChevronUp, ChevronDown, Plus, Trash, Activity } from '../components/icons';
 import { toast } from '../components/toast';
@@ -98,10 +101,12 @@ export function HomeScreen() {
 
   const completedMap = useMemo(() => completedByEpochDay(state), [state]);
   const activityMap = useMemo(() => activityByEpochDay(state), [state]);
+  const sessionsByDay = useMemo(() => sessionsByEpochDay(state), [state]);
 
   const [showActivity, setShowActivity] = useState(false);
   const [editWeek, setEditWeek] = useState(false);
   const [showConfetti, setShowConfetti] = useState(() => state.confettiArmed);
+  const [daySheet, setDaySheet] = useState<{ ed: number; label: string } | null>(null);
 
   const weekday = WEEKDAY_FULL[new Date().getDay()];
 
@@ -237,7 +242,9 @@ export function HomeScreen() {
       {/* Calendar */}
       <CalendarCard completedMap={completedMap} activityMap={activityMap} today={today} sessionCount={sessionCount}
         canLogToday={!loggedToday && !todayIsRest && !!upNext}
-        onToday={() => upNext && navigate(`/day/${upNext.id}`)} />
+        onToday={() => upNext && navigate(`/day/${upNext.id}`)}
+        sessionsByDay={sessionsByDay}
+        onDaySessions={(ed, label) => setDaySheet({ ed, label })} />
 
       {/* This week */}
       {split && days.length > 0 && (
@@ -311,6 +318,8 @@ export function HomeScreen() {
           }}
         />
       )}
+
+      {daySheet && <DaySessionsSheet ed={daySheet.ed} label={daySheet.label} onClose={() => setDaySheet(null)} />}
     </div>
   );
 }
@@ -322,6 +331,8 @@ function CalendarCard({
   sessionCount,
   canLogToday,
   onToday,
+  sessionsByDay,
+  onDaySessions,
 }: {
   completedMap: Map<number, number>;
   activityMap: Map<number, string>;
@@ -329,6 +340,8 @@ function CalendarCard({
   sessionCount: number;
   canLogToday: boolean;
   onToday: () => void;
+  sessionsByDay: Map<number, Session[]>;
+  onDaySessions: (ed: number, label: string) => void;
 }) {
   const now = new Date();
   const year = now.getFullYear();
@@ -355,15 +368,27 @@ function CalendarCard({
           const activity = activityMap.get(ed);
           const done = workoutNum != null || activity != null;
           const isToday = ed === today;
-          const tag = workoutNum != null ? `D${workoutNum}` : activity ? activity.slice(0, 3).toUpperCase() : '';
-          const clickable = isToday && canLogToday;
+          const daySessions = sessionsByDay.get(ed);
+          const tag =
+            workoutNum != null
+              ? activity != null
+                ? `D${workoutNum}+`
+                : `D${workoutNum}`
+              : activity
+              ? activity.slice(0, 3).toUpperCase()
+              : '';
+          const hasSessions = !!daySessions && daySessions.length > 0;
+          const clickable = hasSessions || (isToday && canLogToday);
           return (
             <button
               key={i}
               className={`cal-cell ${done ? 'done' : ''} ${isToday && !done ? 'today' : ''}`}
               disabled={!clickable}
               style={{ cursor: clickable ? 'pointer' : 'default' }}
-              onClick={onToday}
+              onClick={() => {
+                if (hasSessions) onDaySessions(ed, `${MONTH_NAMES[month]} ${d}`);
+                else onToday();
+              }}
             >
               <span>{d}</span>
               {tag && <span className="tag">{tag}</span>}
@@ -371,9 +396,27 @@ function CalendarCard({
           );
         })}
       </div>
-      <div className="row gap-16 mt-12">
+      <div className="row gap-16 mt-12 wrap">
         <span className="row gap-6 body-small muted"><span style={{ width: 10, height: 10, borderRadius: 999, background: 'var(--accent-primary)' }} /> Completed</span>
         <span className="row gap-6 body-small muted"><span style={{ width: 10, height: 10, borderRadius: 999, border: '2px solid var(--accent-primary)' }} /> Today</span>
+        <span className="row gap-6 body-small muted">
+          <span
+            className="tag"
+            style={{
+              position: 'static',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '2px 5px',
+              borderRadius: 4,
+              background: 'var(--accent-primary)',
+              color: 'var(--on-accent)',
+            }}
+          >
+            RUN
+          </span>
+          Activity
+        </span>
       </div>
     </div>
   );
@@ -432,5 +475,68 @@ function LogActivityDialog({
         </BigCta>
       </div>
     </Dialog>
+  );
+}
+
+function DaySessionsSheet({
+  ed,
+  label,
+  onClose,
+}: {
+  ed: number;
+  label: string;
+  onClose: () => void;
+}) {
+  const state = useStore();
+  const unit = state.prefs.units;
+  const sessions = sessionsByEpochDay(state).get(ed) ?? [];
+
+  return (
+    <Sheet onClose={onClose}>
+      <div className="headline-small mb-16">{label}</div>
+      <div className="stack gap-8">
+        {sessions.length === 0 && <div className="body-small muted">Nothing logged.</div>}
+        {sessions.map((s: Session) => {
+          const time = s.completedAt != null
+            ? new Date(s.completedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            : '';
+
+          if (s.notes === REST_SESSION_NOTE) {
+            const wd = s.workoutDayId ? state.workoutDays[s.workoutDayId] : null;
+            return (
+              <div key={s.id} className="card" style={{ padding: 14 }}>
+                <div className="stack">
+                  <span className="title-small">Rest day</span>
+                  {wd && <span className="body-small muted">{wd.name}</span>}
+                </div>
+              </div>
+            );
+          }
+
+          if (s.workoutDayId != null) {
+            const wd = state.workoutDays[s.workoutDayId];
+            const logs = sessionLogs(state, s.id);
+            const vol = Math.round(kgToDisplay(totalVolumeKg(logs), unit));
+            return (
+              <div key={s.id} className="card" style={{ padding: 14 }}>
+                <div className="stack">
+                  <span className="title-small">{wd?.name ?? 'Workout'}</span>
+                  <span className="body-small muted">{logs.length} sets · {vol} {unit} · {time}</span>
+                </div>
+              </div>
+            );
+          }
+
+          return (
+            <div key={s.id} className="card" style={{ padding: 14 }}>
+              <div className="stack">
+                <span className="title-small">{s.activityType ?? 'Activity'}</span>
+                <span className="body-small muted">{s.durationMin ? `${s.durationMin} min · ` : ''}{time}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Sheet>
   );
 }
