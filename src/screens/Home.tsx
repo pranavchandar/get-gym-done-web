@@ -24,6 +24,12 @@ import { toast } from '../components/toast';
 
 const ACTIVITY_CHIPS = ['Running', 'Walking', 'Cycling', 'Swimming', 'Pickleball', 'Tennis', 'Table Tennis', 'Basketball', 'Soccer', 'Yoga', 'Hiking'];
 
+function formatElapsed(startedAt: number, now: number): string {
+  const mins = Math.max(1, Math.round((now - startedAt) / 60000));
+  if (mins < 60) return `${mins} min`;
+  return `${Math.floor(mins / 60)} h ${mins % 60} min`;
+}
+
 export function HomeScreen() {
   const navigate = useNavigate();
   const state = useStore();
@@ -102,6 +108,18 @@ export function HomeScreen() {
   const upNextExs = upNext ? dayExercisesOf(state, upNext.id) : [];
   const upNextSets = upNextExs.reduce((a, e) => a + e.prescribedSets, 0);
 
+  const activeSess = state.activeSession;
+  const activeSessDay = activeSess ? state.workoutDays[activeSess.workoutDayId] ?? null : null;
+  const activeSessStarted = activeSess ? state.sessions[activeSess.sessionId]?.startedAt ?? null : null;
+  const activeSessSets = activeSess ? Object.values(state.setLogs).filter((l) => l.sessionId === activeSess.sessionId).length : 0;
+
+  const [nowTick, setNowTick] = useState(Date.now());
+  useEffect(() => {
+    if (!activeSess) return;
+    const id = window.setInterval(() => setNowTick(Date.now()), 30000);
+    return () => window.clearInterval(id);
+  }, [activeSess]);
+
   return (
     <div className="pad stack gap-20" style={{ paddingBottom: 32 }}>
       {state.confettiArmed && <Confetti onFinished={consumeConfetti} />}
@@ -149,7 +167,34 @@ export function HomeScreen() {
       )}
 
       {/* Up-next card */}
-      {upNext ? (
+      {activeSess && activeSessDay ? (
+        <div className="card" style={{ position: 'relative', overflow: 'hidden', background: 'var(--accent-primary)', color: 'var(--on-accent)', borderColor: 'var(--accent-primary)' }}>
+          <div className="watermark" style={{ color: 'var(--on-accent)' }}>D{activeSessDay.dayNumber}</div>
+          <div className="label-medium" style={{ opacity: 0.7 }}>IN PROGRESS</div>
+          <div className="headline-large" style={{ marginTop: 6 }}>DAY {activeSessDay.dayNumber}</div>
+          <div className="title-medium" style={{ opacity: 0.85 }}>{activeSessDay.name}</div>
+          <div className="body-small" style={{ opacity: 0.8, marginTop: 8 }}>
+            {activeSessSets} sets logged{activeSessStarted ? ` · started ${formatElapsed(activeSessStarted, nowTick)} ago` : ''}
+          </div>
+          <div className="row gap-8 mt-16">
+            <button
+              className="big-cta grow"
+              style={{ background: 'var(--on-accent)', color: 'var(--accent-primary)', minHeight: 52 }}
+              onClick={() => navigate(`/workout/${activeSess.workoutDayId}`)}
+            >
+              Resume workout <ArrowRight size={20} />
+            </button>
+            <button
+              className="icon-btn"
+              style={{ background: 'var(--on-accent)', color: 'var(--accent-primary)', border: 'none', width: 52, height: 52 }}
+              aria-label="Day overview"
+              onClick={() => navigate(`/day/${activeSessDay.id}`)}
+            >
+              <Swap size={20} />
+            </button>
+          </div>
+        </div>
+      ) : upNext ? (
         <div className="card" style={{ position: 'relative', overflow: 'hidden', background: 'var(--accent-primary)', color: 'var(--on-accent)', borderColor: 'var(--accent-primary)' }}>
           <div className="watermark" style={{ color: 'var(--on-accent)' }}>D{upNext.dayNumber}</div>
           <div className="label-medium" style={{ opacity: 0.7 }}>UP NEXT</div>
