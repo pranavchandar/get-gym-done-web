@@ -89,6 +89,7 @@ export interface ActiveSessionState {
   workoutDayId: string;
   exerciseIds: string[]; // ordered, includes temporary additions
   addedExerciseIds: string[]; // subset that were added just for this workout
+  replacedExerciseIds?: string[]; // subset swapped in for a prescribed exercise this workout
   currentIndex: number;
   restEndAt: number | null;
   restDuration: number | null; // seconds for the current running timer

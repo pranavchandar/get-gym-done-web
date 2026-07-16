@@ -143,6 +143,7 @@ export function ActiveWorkoutScreen() {
           exId={currentExId}
           exerciseNumber={currentIndex + 1}
           isAdded={active.addedExerciseIds.includes(currentExId)}
+          isReplaced={(active.replacedExerciseIds ?? []).includes(currentExId)}
           unit={unit}
           info={infoFor(currentExId)}
           overrides={overrides[currentExId] ?? {}}
@@ -260,6 +261,7 @@ function ExerciseContent({
   exId,
   exerciseNumber,
   isAdded,
+  isReplaced,
   unit,
   info,
   overrides,
@@ -276,6 +278,7 @@ function ExerciseContent({
   exId: string;
   exerciseNumber: number;
   isAdded: boolean;
+  isReplaced: boolean;
   unit: 'kg' | 'lbs';
   info: Info;
   overrides: Record<number, number>;
@@ -342,7 +345,7 @@ function ExerciseContent({
   return (
     <div className="stack gap-16" style={{ paddingBottom: 12 }}>
       <div>
-        <div className="label-medium muted">EXERCISE {exerciseNumber}{isAdded ? ' · ADDED' : ''}</div>
+        <div className="label-medium muted">EXERCISE {exerciseNumber}{isReplaced ? ' · REPLACED' : isAdded ? ' · ADDED' : ''}</div>
         <h1 className="headline-large" style={{ margin: '6px 0 10px' }}>{ex?.name ?? 'Exercise'}</h1>
         <span className="pill pill-outline">{p.sets}×{p.low}-{p.high} · PRESCRIPTION</span>
       </div>

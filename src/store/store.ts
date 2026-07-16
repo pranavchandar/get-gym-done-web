@@ -413,6 +413,7 @@ export const useStore = create<Store>()(
           workoutDayId,
           exerciseIds,
           addedExerciseIds: added,
+          replacedExerciseIds: [],
           currentIndex: startIndex,
           restEndAt: null,
           restDuration: null,
@@ -489,11 +490,19 @@ export const useStore = create<Store>()(
         for (const l of setLogsOfSession(s, s.activeSession.sessionId)) {
           if (l.exerciseId === oldExerciseId) delete setLogsNext[l.id];
         }
+        const wasAdded = s.activeSession.addedExerciseIds.includes(oldExerciseId);
         const added = s.activeSession.addedExerciseIds.filter((id) => id !== oldExerciseId);
-        added.push(newExerciseId);
+        const replaced = (s.activeSession.replacedExerciseIds ?? []).filter((id) => id !== oldExerciseId);
+        if (wasAdded) added.push(newExerciseId);
+        else replaced.push(newExerciseId);
         set({
           setLogs: setLogsNext,
-          activeSession: { ...s.activeSession, exerciseIds, addedExerciseIds: added },
+          activeSession: {
+            ...s.activeSession,
+            exerciseIds,
+            addedExerciseIds: added,
+            replacedExerciseIds: replaced,
+          },
         });
       },
 
@@ -515,6 +524,7 @@ export const useStore = create<Store>()(
             ...s.activeSession,
             exerciseIds,
             addedExerciseIds: s.activeSession.addedExerciseIds.filter((id) => id !== exerciseId),
+            replacedExerciseIds: (s.activeSession.replacedExerciseIds ?? []).filter((id) => id !== exerciseId),
             currentIndex,
           },
         });
