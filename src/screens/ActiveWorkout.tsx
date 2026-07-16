@@ -409,7 +409,7 @@ function ExerciseContent({
                   <Stepper
                     value={draft.reps}
                     step={1}
-                    min={0}
+                    min={1}
                     max={99}
                     onChange={(v) => setDraft((d) => ({ ...d, reps: v }))}
                     onValueTap={() => onOpenKeypad('reps')}
@@ -438,6 +438,7 @@ function ExerciseContent({
       {/* Complete-set CTA lives here so it sits with the sets */}
       {activeSetNumber != null && (
         <BigCta
+          disabled={draft.reps < 1}
           onClick={() => {
             const undoneAfter = setCount - doneNumbers.size - 1;
             const isFinal = isLastExercise && undoneAfter <= 0;
