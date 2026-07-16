@@ -139,13 +139,13 @@ export function HomeScreen() {
 
       {/* Stat strip */}
       <div className="row gap-8">
-        <div className="stat-pill">
+        <div className="stat-pill" title="Any day with a logged workout or activity keeps the streak alive; scheduled rest days don't break it.">
           <div className="big">{streakDays > 0 ? `${streakDays}d` : '—'}</div>
           <div className="label-small muted" style={{ marginTop: 4 }}>{streakLost ? 'Streak lost' : 'Streak'}</div>
         </div>
-        <div className="stat-pill">
+        <div className="stat-pill" title="Routine days completed in the last 7 days.">
           <div className="big">{sessionsThisWeek}/{trainableDayCount}</div>
-          <div className="label-small muted" style={{ marginTop: 4 }}>This week</div>
+          <div className="label-small muted" style={{ marginTop: 4 }}>Last 7 days</div>
         </div>
         <div className="stat-pill">
           <div className="big row" style={{ justifyContent: 'center', gap: 4 }}>
