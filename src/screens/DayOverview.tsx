@@ -49,7 +49,7 @@ export function DayOverviewScreen() {
 
       <div className="screen-scroll pad">
         {day.isRestDay ? (
-          <div className="center stack gap-16" style={{ paddingTop: 48 }}>
+          <div className="center stack gap-16" style={{ paddingTop: 48, alignItems: 'center' }}>
             <div className="label-medium muted">DAY {day.dayNumber} OF {total}</div>
             <Bed size={64} className="accent" />
             <h1 className="display-medium" style={{ margin: 0 }}>REST DAY</h1>
