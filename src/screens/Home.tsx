@@ -339,7 +339,7 @@ function CalendarCard({
     <div className="card">
       <div className="row-between mb-12">
         <span className="title-medium">{MONTH_NAMES[month]} {year}</span>
-        <span className="body-small muted">{sessionCount} sessions</span>
+        <span className="body-small muted">{sessionCount} session{sessionCount === 1 ? '' : 's'}</span>
       </div>
       <div className="cal-grid">
         {cells.map((d, i) => {
