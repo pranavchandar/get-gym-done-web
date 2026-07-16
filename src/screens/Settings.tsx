@@ -87,8 +87,8 @@ export function SettingsScreen() {
               try {
                 const text = await file.text();
                 setImportData(parseBackup(text));
-              } catch {
-                toast('Could not read that file.');
+              } catch (err) {
+                toast(err instanceof Error ? err.message : 'Could not read that file.');
               }
               e.target.value = '';
             }}
@@ -117,7 +117,7 @@ export function SettingsScreen() {
             <GhostCta onClick={() => setPullConfirm(null)}>Cancel</GhostCta>
             <BigCta style={{ minHeight: 52 }} onClick={() => {
               try { applyBackup(parseBackup(pullConfirm)); toast('Pulled from cloud'); }
-              catch { toast('Cloud data was invalid.'); }
+              catch (err) { toast(err instanceof Error ? err.message : 'Cloud data was invalid.'); }
               setPullConfirm(null);
             }}>Replace</BigCta>
           </div>
