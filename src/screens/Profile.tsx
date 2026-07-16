@@ -420,7 +420,12 @@ function EditProfileSheet({ onClose, onSave }: { onClose: () => void; onSave: (p
       <div className="center mb-16">
         <Avatar name={name || 'ATHLETE'} color={color} photo={photo} size={72} />
       </div>
-      <input className="field mb-16" maxLength={20} placeholder="Name" value={name} onChange={(e) => setName(e.target.value.slice(0, 20))} />
+      <div className="mb-16">
+        <input className="field" maxLength={40} placeholder="Name" value={name} onChange={(e) => setName(e.target.value.slice(0, 40))} />
+        {name.length >= 30 && (
+          <div className="body-small muted" style={{ marginTop: 4, textAlign: 'right' }}>{name.length}/40</div>
+        )}
+      </div>
       <div className="label-medium muted mb-8">Avatar color</div>
       <div className="row wrap gap-8 mb-16">
         {ACCENT_PALETTES.map((p) => (
