@@ -101,6 +101,7 @@ export function HomeScreen() {
 
   const [showActivity, setShowActivity] = useState(false);
   const [editWeek, setEditWeek] = useState(false);
+  const [showConfetti, setShowConfetti] = useState(() => state.confettiArmed);
 
   const weekday = WEEKDAY_FULL[new Date().getDay()];
 
@@ -119,9 +120,14 @@ export function HomeScreen() {
     return () => window.clearInterval(id);
   }, [activeSess]);
 
+  useEffect(() => {
+    if (state.confettiArmed) consumeConfetti();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <div className="pad stack gap-20" style={{ paddingBottom: 32 }}>
-      {state.confettiArmed && <Confetti onFinished={consumeConfetti} />}
+      {showConfetti && <Confetti onFinished={() => setShowConfetti(false)} />}
 
       {/* Header */}
       <div>
