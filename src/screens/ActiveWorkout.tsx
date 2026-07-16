@@ -13,6 +13,8 @@ import { ExercisePicker } from '../components/ExercisePicker';
 import { toast } from '../components/toast';
 import { autoPush } from '../sync/gist';
 
+const NOTIF_PROMPT_DISMISSED_KEY = 'get-gym-done:notif-prompt-dismissed';
+
 export function ActiveWorkoutScreen() {
   const navigate = useNavigate();
   const { dayId = '' } = useParams();
@@ -43,14 +45,6 @@ export function ActiveWorkoutScreen() {
     startOrResume(dayId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dayId, isRest, emptyDay]);
-
-  // lazily request notification permission
-  useEffect(() => {
-    if (isRest || emptyDay) return;
-    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
-      Notification.requestPermission().catch(() => {});
-    }
-  }, [isRest, emptyDay]);
 
   // ephemeral per-exercise UI state
   const [extra, setExtra] = useState<Record<string, number>>({});
@@ -530,6 +524,18 @@ function RestOverlay({
 }) {
   const [now, setNow] = useState(Date.now());
   const firedRef = useRef(false);
+  const [notifPrompt, setNotifPrompt] = useState(() => {
+    if (typeof Notification === 'undefined' || Notification.permission !== 'default') return false;
+    try { return localStorage.getItem(NOTIF_PROMPT_DISMISSED_KEY) !== '1'; } catch { return true; }
+  });
+  const dismiss = () => {
+    try { localStorage.setItem(NOTIF_PROMPT_DISMISSED_KEY, '1'); } catch { /* ignore */ }
+    setNotifPrompt(false);
+  };
+  const enable = () => {
+    setNotifPrompt(false);
+    if (typeof Notification !== 'undefined') Notification.requestPermission().catch(() => {});
+  };
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 200);
     return () => window.clearInterval(id);
@@ -554,6 +560,15 @@ function RestOverlay({
 
   return (
     <div className="rest-overlay">
+      {notifPrompt && (
+        <div className="card" style={{ maxWidth: 320, textAlign: 'left' }}>
+          <p className="body-medium" style={{ margin: '0 0 12px' }}>Get an alert when rest ends — even if you're in another tab.</p>
+          <div className="row gap-8">
+            <button className="ghost-cta" onClick={dismiss}>Not now</button>
+            <button className="big-cta" style={{ minHeight: 44 }} onClick={enable}>Enable</button>
+          </div>
+        </div>
+      )}
       <div className="row gap-24" style={{ alignItems: 'center' }}>
         <button className="icon-btn" style={{ width: 56, height: 56 }} onClick={() => onAdjust(-30)}>−30s</button>
         <svg width={200} height={200} viewBox="0 0 200 200">
