@@ -5,7 +5,7 @@ import { dayExercisesOf, sessionLogs, completedHistoryForExercise, lastCompleted
 import { weightIncreaseSuggestion } from '../domain/progression';
 import { kgToDisplay, displayToKg, displayStep, incrementKgFor, formatWeight } from '../domain/units';
 import { DEFAULT_START_WEIGHT_KG } from '../types';
-import { BigCta, Stepper, StripedPlaceholder, PillChip, Sheet } from '../components/ui';
+import { BigCta, GhostCta, Stepper, StripedPlaceholder, PillChip, Sheet, Dialog } from '../components/ui';
 import { X, More, Check, MinusCircle, Plus, ArrowRight } from '../components/icons';
 import { MuscleMap } from '../components/MuscleMap';
 import { Keypad } from '../components/Keypad';
@@ -59,6 +59,7 @@ export function ActiveWorkoutScreen() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [picker, setPicker] = useState<null | 'add' | 'replace'>(null);
   const [keypad, setKeypad] = useState<null | 'weight' | 'reps'>(null);
+  const [confirmFinish, setConfirmFinish] = useState(false);
 
   const active = state.activeSession;
 
@@ -105,7 +106,19 @@ export function ActiveWorkoutScreen() {
   const totalSets = exerciseIds.reduce((a, id) => a + infoFor(id).setCount, 0);
   const doneSets = exerciseIds.reduce((a, id) => a + infoFor(id).doneCount, 0);
 
+  const unfinished = exerciseIds
+    .map((id) => ({ id, info: infoFor(id), name: state.exercises[id]?.name ?? 'Exercise' }))
+    .filter((x) => x.info.activeSetNumber !== null);
+
   const back = () => navigate('/home');
+
+  const doFinish = () => {
+    const sid = finishWorkout();
+    if (sid) {
+      autoPush();
+      navigate(`/complete/${sid}`);
+    }
+  };
 
   return (
     <div className="screen">
@@ -178,11 +191,8 @@ export function ActiveWorkoutScreen() {
           setCurrentIndex(Math.min(currentIndex + 1, total - 1));
         }}
         onFinish={() => {
-          const sid = finishWorkout();
-          if (sid) {
-            autoPush();
-            navigate(`/complete/${sid}`);
-          }
+          if (unfinished.length > 0) setConfirmFinish(true);
+          else doFinish();
         }}
       />
 
@@ -195,6 +205,23 @@ export function ActiveWorkoutScreen() {
           onSkip={clearRestTimer}
           onDone={clearRestTimer}
         />
+      )}
+
+      {/* confirm finish with unfinished exercises */}
+      {confirmFinish && (
+        <Dialog onClose={() => setConfirmFinish(false)}>
+          <div className="headline-small mb-8">Finish with unfinished sets?</div>
+          <p className="body-medium muted" style={{ margin: 0 }}>These exercises still have unlogged sets:</p>
+          <div className="stack gap-4" style={{ margin: '12px 0 0' }}>
+            {unfinished.map((x) => (
+              <div key={x.id} className="body-medium">{x.name} <span className="muted">· {x.info.doneCount}/{x.info.setCount} sets</span></div>
+            ))}
+          </div>
+          <div className="row gap-8 mt-20">
+            <GhostCta onClick={() => setConfirmFinish(false)}>Keep training</GhostCta>
+            <BigCta style={{ minHeight: 52 }} onClick={() => { setConfirmFinish(false); doFinish(); }}>Finish anyway</BigCta>
+          </div>
+        </Dialog>
       )}
 
       {/* overflow menu */}
