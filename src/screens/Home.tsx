@@ -19,7 +19,7 @@ import { formatWeight } from '../domain/units';
 import { REST_SESSION_NOTE } from '../types';
 import { BigCta, GhostCta, Dialog, TrendArrow } from '../components/ui';
 import { Confetti } from '../components/Confetti';
-import { Reset, Swap, ArrowRight, Bed, Check, ChevronRight, ChevronUp, ChevronDown, Plus, Trash, Activity } from '../components/icons';
+import { Swap, ArrowRight, Bed, Check, ChevronRight, ChevronUp, ChevronDown, Plus, Trash, Activity } from '../components/icons';
 import { toast } from '../components/toast';
 
 const ACTIVITY_CHIPS = ['Running', 'Walking', 'Cycling', 'Swimming', 'Pickleball', 'Tennis', 'Table Tennis', 'Basketball', 'Soccer', 'Yoga', 'Hiking'];
@@ -99,7 +99,6 @@ export function HomeScreen() {
   const completedMap = useMemo(() => completedByEpochDay(state), [state]);
   const activityMap = useMemo(() => activityByEpochDay(state), [state]);
 
-  const [showReset, setShowReset] = useState(false);
   const [showActivity, setShowActivity] = useState(false);
   const [editWeek, setEditWeek] = useState(false);
 
@@ -125,16 +124,11 @@ export function HomeScreen() {
       {state.confettiArmed && <Confetti onFinished={consumeConfetti} />}
 
       {/* Header */}
-      <div className="row-between">
-        <div>
-          <div className="label-medium muted">TODAY · {weekday}</div>
-          <h1 className="display-medium" style={{ margin: '6px 0 0' }}>
-            READY TO<br />GET IT<span className="accent">.</span>
-          </h1>
-        </div>
-        <button className="icon-btn" aria-label="Reset routine" onClick={() => setShowReset(true)}>
-          <Reset size={18} />
-        </button>
+      <div>
+        <div className="label-medium muted">TODAY · {weekday}</div>
+        <h1 className="display-medium" style={{ margin: '6px 0 0' }}>
+          READY TO<br />GET IT<span className="accent">.</span>
+        </h1>
       </div>
 
       {/* Stat strip */}
@@ -293,17 +287,6 @@ export function HomeScreen() {
             )}
           </div>
         </div>
-      )}
-
-      {showReset && (
-        <Dialog onClose={() => setShowReset(false)}>
-          <div className="headline-small mb-8">RESET ROUTINE?</div>
-          <p className="body-medium muted">Picking a new split will reset your current routine. Any customizations to it will be lost.</p>
-          <div className="row gap-8 mt-20">
-            <GhostCta onClick={() => setShowReset(false)}>Cancel</GhostCta>
-            <BigCta style={{ minHeight: 52 }} onClick={() => { setShowReset(false); navigate('/pick-split'); }}>Reset</BigCta>
-          </div>
-        </Dialog>
       )}
 
       {showActivity && (

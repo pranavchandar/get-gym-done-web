@@ -21,6 +21,7 @@ export function SettingsScreen() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [importData, setImportData] = useState<ReturnType<typeof parseBackup> | null>(null);
   const [pullConfirm, setPullConfirm] = useState<string | null>(null);
+  const [resetConfirm, setResetConfirm] = useState(false);
 
   return (
     <div className="pad stack gap-24" style={{ paddingBottom: 40 }}>
@@ -67,7 +68,7 @@ export function SettingsScreen() {
 
       {/* Routine */}
       <Section title="Routine">
-        <GhostCta onClick={() => navigate('/pick-split')}>Reset routine</GhostCta>
+        <GhostCta onClick={() => setResetConfirm(true)}>Reset routine</GhostCta>
       </Section>
 
       {/* Cloud Sync */}
@@ -124,6 +125,17 @@ export function SettingsScreen() {
               catch (err) { toast(err instanceof Error ? err.message : 'Cloud data was invalid.'); }
               setPullConfirm(null);
             }}>Replace</BigCta>
+          </div>
+        </Dialog>
+      )}
+
+      {resetConfirm && (
+        <Dialog onClose={() => setResetConfirm(false)}>
+          <div className="headline-small mb-8">RESET ROUTINE?</div>
+          <p className="body-medium muted">Picking a new split will reset your current routine. Any customizations to it will be lost.</p>
+          <div className="row gap-8 mt-20">
+            <GhostCta onClick={() => setResetConfirm(false)}>Cancel</GhostCta>
+            <BigCta style={{ minHeight: 52 }} onClick={() => { setResetConfirm(false); navigate('/pick-split'); }}>Reset</BigCta>
           </div>
         </Dialog>
       )}
