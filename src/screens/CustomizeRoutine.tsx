@@ -39,18 +39,37 @@ export function CustomizeRoutineScreen() {
   const [draft, setDraft] = useState<RoutineDraft>(initial);
   const [dayIdx, setDayIdx] = useState(0);
   const [picking, setPicking] = useState(false);
+  const [removedDays, setRemovedDays] = useState<DraftDay[]>([]);
 
   const day = draft.days[dayIdx];
   const canLock = draft.days.some((d) => !d.isRestDay && d.exercises.length > 0);
 
   const setDayCount = (n: number) => {
     const target = Math.max(MIN_DAYS, Math.min(MAX_DAYS, n));
-    setDraft((prev) => {
-      const days = [...prev.days];
-      while (days.length < target) days.push({ name: `Day ${days.length + 1}`, isRestDay: false, exercises: [] });
-      while (days.length > target) days.pop();
-      return { ...prev, days };
-    });
+
+    // Read current values directly (the component re-renders on every stepper
+    // click, so draft/removedDays are always fresh here) rather than splitting
+    // this across two functional updaters, which would each see a stale view
+    // of the other piece of state.
+    const days = [...draft.days];
+    const removed = [...removedDays];
+
+    // Shrinking: pop days off the end onto the removed stack, most-recently
+    // removed on top, so growing back restores them in their original order.
+    while (days.length > target) {
+      removed.push(days.pop()!);
+    }
+
+    // Growing: first restore days from the top of the removed stack (undoing
+    // a previous shrink exactly), then fall back to fresh empty days once the
+    // stack runs out.
+    while (days.length < target) {
+      const restored = removed.pop();
+      days.push(restored ?? { name: `Day ${days.length + 1}`, isRestDay: false, exercises: [] });
+    }
+
+    setDraft((prev) => ({ ...prev, days }));
+    setRemovedDays(removed);
     setDayIdx((i) => Math.min(i, target - 1));
   };
 
