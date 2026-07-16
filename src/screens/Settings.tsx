@@ -3,9 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/store';
 import { ACCENT_PALETTES } from '../theme/palettes';
 import type { ThemeChoice, Units } from '../types';
+import { REST_MIN, REST_MAX, REST_STEP } from '../types';
 import { downloadBackup, parseBackup, applyBackup } from '../backup/backup';
 import { getToken, setToken, getGistId, getLastSync, pushToGist, pullFromGist, clearGistConfig } from '../sync/gist';
-import { BigCta, GhostCta, Dialog } from '../components/ui';
+import { BigCta, GhostCta, Dialog, Stepper } from '../components/ui';
 import { Check } from '../components/icons';
 import { toast } from '../components/toast';
 
@@ -14,6 +15,7 @@ export function SettingsScreen() {
   const prefs = useStore((s) => s.prefs);
   const setTheme = useStore((s) => s.setTheme);
   const setUnits = useStore((s) => s.setUnits);
+  const setRestSeconds = useStore((s) => s.setRestSeconds);
   const setAccent = useStore((s) => s.setAccent);
 
   const fileRef = useRef<HTMLInputElement>(null);
@@ -59,6 +61,8 @@ export function SettingsScreen() {
             <button key={u} className={prefs.units === u ? 'active' : ''} onClick={() => setUnits(u)}>{u}</button>
           ))}
         </div>
+        <div className="label-medium muted mb-8" style={{ marginTop: 16 }}>Default rest between sets</div>
+        <Stepper value={prefs.restSeconds} step={REST_STEP} min={REST_MIN} max={REST_MAX} onChange={setRestSeconds} format={(v) => `${v}s`} />
       </Section>
 
       {/* Routine */}

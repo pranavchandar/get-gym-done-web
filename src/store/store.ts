@@ -66,6 +66,7 @@ export interface StoreActions {
   // prefs
   setTheme: (t: ThemeChoice) => void;
   setUnits: (u: Units) => void;
+  setRestSeconds: (seconds: number) => void;
   setAccent: (a: string) => void;
   setProfile: (p: { handle?: string | null; color?: string | null; avatarPhoto?: string | null }) => void;
   // splits / onboarding
@@ -194,6 +195,10 @@ export const useStore = create<Store>()(
 
       setTheme: (t) => set((s) => ({ prefs: { ...s.prefs, theme: t } })),
       setUnits: (u) => set((s) => ({ prefs: { ...s.prefs, units: u } })),
+      setRestSeconds: (seconds) => {
+        const v = Math.max(REST_MIN, Math.min(REST_MAX, Math.round(seconds)));
+        set((s) => ({ prefs: { ...s.prefs, restSeconds: v } }));
+      },
       setAccent: (a) => set((s) => ({ prefs: { ...s.prefs, accent: a } })),
       setProfile: (p) => set((s) => ({ prefs: { ...s.prefs, ...p } })),
 
@@ -538,7 +543,6 @@ export const useStore = create<Store>()(
           const newDur = Math.max(REST_MIN, Math.min(REST_MAX, curDur + delta));
           const applied = newDur - curDur;
           return {
-            prefs: { ...s.prefs, restSeconds: newDur },
             activeSession: {
               ...s.activeSession,
               restEndAt: s.activeSession.restEndAt + applied * 1000,
