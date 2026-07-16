@@ -27,6 +27,12 @@
   --accent-primary: #b7ef09;
   --accent-secondary: #ff5453;
   --on-accent: #0a0a09;
+  /* accent color for TEXT on plain page/surface backgrounds (active tab
+     label, text-links, .accent labels). Defaults to --accent-primary so
+     dark mode is unaffected; overridden per-accent in light theme below
+     for WCAG AA contrast (see the data-theme='light'][data-accent=...]
+     block). */
+  --accent-text: #b7ef09;
 
   --maxw: 480px;
   color-scheme: dark;
@@ -45,16 +51,33 @@
 }
 
 /* Accent palettes */
-:root[data-accent='lime'] { --accent-primary: #b7ef09; --accent-secondary: #ff5453; --on-accent: #0a0a09; }
-:root[data-accent='ember'] { --accent-primary: #ff7c00; --accent-secondary: #f46eb4; --on-accent: #0a0a09; }
-:root[data-accent='blue'] { --accent-primary: #00cdff; --accent-secondary: #73d25d; --on-accent: #0a0a09; }
-:root[data-accent='blood_red'] { --accent-primary: #ee343b; --accent-secondary: #fbc600; --on-accent: #f7f5f0; }
-:root[data-accent='violet'] { --accent-primary: #9658ff; --accent-secondary: #fbc600; --on-accent: #f7f5f0; }
-:root[data-accent='hyper_green'] { --accent-primary: #4df83f; --accent-secondary: #ff6661; --on-accent: #0a0a09; }
-:root[data-accent='magenta'] { --accent-primary: #ff2391; --accent-secondary: #00e2ed; --on-accent: #0a0a09; }
-:root[data-accent='gold'] { --accent-primary: #f3c530; --accent-secondary: #ee343b; --on-accent: #0a0a09; }
-:root[data-accent='cyan'] { --accent-primary: #1ee6e7; --accent-secondary: #ff7c00; --on-accent: #0a0a09; }
-:root[data-accent='mono'] { --accent-primary: #f7f5f0; --accent-secondary: #a8a59a; --on-accent: #0a0a09; }
+:root[data-accent='lime'] { --accent-primary: #b7ef09; --accent-secondary: #ff5453; --on-accent: #0a0a09; --accent-text: #b7ef09; }
+:root[data-accent='ember'] { --accent-primary: #ff7c00; --accent-secondary: #f46eb4; --on-accent: #0a0a09; --accent-text: #ff7c00; }
+:root[data-accent='blue'] { --accent-primary: #00cdff; --accent-secondary: #73d25d; --on-accent: #0a0a09; --accent-text: #00cdff; }
+:root[data-accent='blood_red'] { --accent-primary: #ee343b; --accent-secondary: #fbc600; --on-accent: #f7f5f0; --accent-text: #ee343b; }
+:root[data-accent='violet'] { --accent-primary: #9658ff; --accent-secondary: #fbc600; --on-accent: #f7f5f0; --accent-text: #9658ff; }
+:root[data-accent='hyper_green'] { --accent-primary: #4df83f; --accent-secondary: #ff6661; --on-accent: #0a0a09; --accent-text: #4df83f; }
+:root[data-accent='magenta'] { --accent-primary: #ff2391; --accent-secondary: #00e2ed; --on-accent: #0a0a09; --accent-text: #ff2391; }
+:root[data-accent='gold'] { --accent-primary: #f3c530; --accent-secondary: #ee343b; --on-accent: #0a0a09; --accent-text: #f3c530; }
+:root[data-accent='cyan'] { --accent-primary: #1ee6e7; --accent-secondary: #ff7c00; --on-accent: #0a0a09; --accent-text: #1ee6e7; }
+:root[data-accent='mono'] { --accent-primary: #f7f5f0; --accent-secondary: #a8a59a; --on-accent: #0a0a09; --accent-text: #f7f5f0; }
+
+/* Light theme: darkened per-accent text colors so accent-colored TEXT
+   (active tab label, text-links, .accent labels) meets WCAG AA (>= 4.5:1)
+   against both light --bg (#f5f3ee) and --surface (#ffffff), verified with a
+   WCAG 2.1 relative-luminance contrast check. Contained usages (accent as a
+   background/border/ring/fill with --on-accent text) are unaffected — they
+   keep using --accent-primary directly. */
+:root[data-theme='light'][data-accent='lime'] { --accent-text: #4d6600; }
+:root[data-theme='light'][data-accent='ember'] { --accent-text: #a34e00; }
+:root[data-theme='light'][data-accent='blue'] { --accent-text: #006c8a; }
+:root[data-theme='light'][data-accent='blood_red'] { --accent-text: #c1121f; }
+:root[data-theme='light'][data-accent='violet'] { --accent-text: #6a2fd0; }
+:root[data-theme='light'][data-accent='hyper_green'] { --accent-text: #1d7a12; }
+:root[data-theme='light'][data-accent='magenta'] { --accent-text: #c40062; }
+:root[data-theme='light'][data-accent='gold'] { --accent-text: #856900; }
+:root[data-theme='light'][data-accent='cyan'] { --accent-text: #007778; }
+:root[data-theme='light'][data-accent='mono'] { --accent-text: #1a1a18; }
 
 /* Onboarding: fixed lime on near-black, regardless of theme/accent */
 .ob {
@@ -69,6 +92,7 @@
   --accent-primary: #c1f038;
   --accent-secondary: #ff5453;
   --on-accent: #0a0a09;
+  --accent-text: var(--accent-primary);
   background: var(--bg);
   color: var(--fg);
 }
@@ -109,7 +133,7 @@ a { color: inherit; text-decoration: none; }
 
 .muted { color: var(--fg2); }
 .muted3 { color: var(--fg3); }
-.accent { color: var(--accent-primary); }
+.accent { color: var(--accent-text); }
 .center { text-align: center; }
 
 /* ============================================================= Layout */
@@ -197,7 +221,7 @@ a { color: inherit; text-decoration: none; }
 .icon-btn:active { background: var(--surface2); }
 
 .text-link {
-  background: none; border: none; color: var(--accent-primary);
+  background: none; border: none; color: var(--accent-text);
   font-weight: 600; font-size: 14px; padding: 6px 2px;
 }
 
@@ -269,7 +293,7 @@ textarea.field { resize: vertical; min-height: 60px; }
   display: flex; flex-direction: column; align-items: center; gap: 4px;
   color: var(--fg3); padding: 4px 0;
 }
-.tabbar button.active { color: var(--accent-primary); }
+.tabbar button.active { color: var(--accent-text); }
 .tabbar .tab-label { font-weight: 700; font-size: 10px; letter-spacing: 1.2px; text-transform: uppercase; }
 
 /* ============================================================= Top bar */

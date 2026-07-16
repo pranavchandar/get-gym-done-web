@@ -56,7 +56,7 @@ export function InitialTile({ name, size = 56 }: { name: string; size?: number }
         flex: '0 0 auto',
       }}
     >
-      <span style={{ fontFamily: 'Anton', fontSize: Math.round(size * 0.45), color: 'var(--accent-primary)' }}>
+      <span style={{ fontFamily: 'Anton', fontSize: Math.round(size * 0.45), color: 'var(--accent-text)' }}>
         {initial}
       </span>
     </div>
