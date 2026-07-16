@@ -22,7 +22,7 @@ export function SplashScreen() {
               style={{ background: 'none', border: 'none', color: 'var(--fg2)' }}
               onClick={() => setTheme(isDark ? 'light' : 'dark')}
             >
-              <span className="label-small">{isDark ? 'DARK' : 'LIGHT'}</span>
+              <span className="label-small">DARK MODE</span>
               <span className={`switch ${isDark ? 'on' : ''}`}>
                 <span />
               </span>
