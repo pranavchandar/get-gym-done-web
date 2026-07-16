@@ -42,7 +42,8 @@ export function WorkoutsListScreen() {
         const exs = dayExercisesOf(state, d.id);
         const sets = exs.reduce((a, e) => a + e.prescribedSets, 0);
         const done = completedCountForDay(state, d.id);
-        const previews = exs.slice(0, 4).map((e) => state.exercises[e.exerciseId]?.name ?? 'Exercise');
+        const previews = exs.slice(0, 3).map((e) => state.exercises[e.exerciseId]?.name ?? 'Exercise');
+        const moreCount = exs.length - 3;
         return (
           <div key={d.id} className="card">
             <div className="row-between">
@@ -72,10 +73,11 @@ export function WorkoutsListScreen() {
               )}
             </div>
             {!d.isRestDay && previews.length > 0 && !edit && (
-              <div className="row gap-6 mt-12" style={{ overflowX: 'auto', paddingBottom: 2 }}>
+              <div className="row wrap gap-6 mt-12">
                 {previews.map((p, k) => (
-                  <span key={k} className="day-chip" style={{ whiteSpace: 'nowrap' }}>{p}</span>
+                  <span key={k} className="day-chip" style={{ whiteSpace: 'nowrap', maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis' }}>{p}</span>
                 ))}
+                {moreCount > 0 && <span className="day-chip" style={{ whiteSpace: 'nowrap' }}>+{moreCount} more</span>}
               </div>
             )}
           </div>
