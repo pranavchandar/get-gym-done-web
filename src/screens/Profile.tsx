@@ -157,7 +157,7 @@ export function ProfileScreen() {
       <div className="row gap-8">
         <div className="stat-pill">
           <div className="big">{compactNumber(kgToDisplay(totalVolKg, unit))}</div>
-          <div className="label-small muted" style={{ marginTop: 4 }}>Total volume</div>
+          <div className="label-small muted" style={{ marginTop: 4 }}>{`Total volume (${unit})`}</div>
         </div>
         <div className="stat-pill">
           <div className="big">{sessionCount}</div>
@@ -181,9 +181,9 @@ export function ProfileScreen() {
           <button className="chip" onClick={() => setLoggingBody(true)}><Plus size={14} /> Log</button>
         </div>
         <div className="row gap-8">
-          <BodyStat label="Weight" value={weight.curr != null ? `${formatWeight(weight.curr, unit)}` : '—'} prev={weight.prev} curr={weight.curr} />
+          <BodyStat label="Weight" value={weight.curr != null ? `${formatWeight(weight.curr, unit)} ${unit}` : '—'} prev={weight.prev} curr={weight.curr} />
           <BodyStat label="Body fat" value={fat.curr != null ? `${fat.curr}%` : '—'} prev={fat.prev} curr={fat.curr} invert />
-          <BodyStat label="Muscle" value={muscle.curr != null ? `${formatWeight(muscle.curr, unit)}` : '—'} prev={muscle.prev} curr={muscle.curr} />
+          <BodyStat label="Muscle" value={muscle.curr != null ? `${formatWeight(muscle.curr, unit)} ${unit}` : '—'} prev={muscle.prev} curr={muscle.curr} />
         </div>
         {bodyExpanded && (
           <div className="mt-16">
@@ -191,9 +191,9 @@ export function ProfileScreen() {
               <thead>
                 <tr className="label-small muted">
                   <td style={{ padding: '6px 4px' }}>Date</td>
-                  <td style={{ padding: '6px 4px' }}>Wt</td>
+                  <td style={{ padding: '6px 4px' }}>{`Wt (${unit})`}</td>
                   <td style={{ padding: '6px 4px' }}>Fat</td>
-                  <td style={{ padding: '6px 4px' }}>Musc</td>
+                  <td style={{ padding: '6px 4px' }}>{`Musc (${unit})`}</td>
                 </tr>
               </thead>
               <tbody>
@@ -218,7 +218,7 @@ export function ProfileScreen() {
         const label = key === 'bodyweightKg' ? 'Weight' : key === 'bodyFatPct' ? 'Body fat' : 'Muscle';
         const curr = series[series.length - 1];
         const deltaPct = series.length >= 2 && series[0] !== 0 ? ((series[series.length - 1] - series[0]) / series[0]) * 100 : null;
-        const display = key === 'bodyFatPct' ? `${curr}%` : formatWeight(curr, unit);
+        const display = key === 'bodyFatPct' ? `${curr}%` : `${formatWeight(curr, unit)} ${unit}`;
         return (
           <div key={key} className="card">
             <div className="row-between mb-8">

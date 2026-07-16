@@ -143,7 +143,7 @@ export function HomeScreen() {
         </div>
         <div className="stat-pill">
           <div className="big row" style={{ justifyContent: 'center', gap: 4 }}>
-            {bwLatest != null ? formatWeight(bwLatest, unit) : '—'}
+            {bwLatest != null ? `${formatWeight(bwLatest, unit)} ${unit}` : '—'}
             <TrendArrow prev={bwPrev} curr={bwLatest} />
           </div>
           <div className="label-small muted" style={{ marginTop: 4 }}>Bodyweight</div>
