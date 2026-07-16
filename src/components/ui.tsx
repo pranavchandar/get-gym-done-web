@@ -40,18 +40,25 @@ export function PillChip({
   return <span className={`pill pill-${variant}`} style={style}>{label}</span>;
 }
 
-export function StripedPlaceholder({
-  label,
-  style,
-  className,
-}: {
-  label: string;
-  style?: React.CSSProperties;
-  className?: string;
-}) {
+export function InitialTile({ name, size = 56 }: { name: string; size?: number }) {
+  const initial = (name.trim().charAt(0) || '?').toUpperCase();
   return (
-    <div className={`striped ${className ?? ''}`} style={style}>
-      {label}
+    <div
+      style={{
+        width: size,
+        height: size,
+        borderRadius: 12,
+        background: 'var(--surface2)',
+        border: '1px solid var(--line)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flex: '0 0 auto',
+      }}
+    >
+      <span style={{ fontFamily: 'Anton', fontSize: Math.round(size * 0.45), color: 'var(--accent-primary)' }}>
+        {initial}
+      </span>
     </div>
   );
 }

@@ -5,7 +5,7 @@ import { dayExercisesOf, sessionLogs, completedHistoryForExercise, lastCompleted
 import { weightIncreaseSuggestion } from '../domain/progression';
 import { kgToDisplay, displayToKg, displayStep, incrementKgFor, formatWeight } from '../domain/units';
 import { DEFAULT_START_WEIGHT_KG } from '../types';
-import { BigCta, GhostCta, Stepper, StripedPlaceholder, PillChip, Sheet, Dialog } from '../components/ui';
+import { BigCta, GhostCta, Stepper, PillChip, Sheet, Dialog } from '../components/ui';
 import { X, More, Check, MinusCircle, Plus, ArrowRight } from '../components/icons';
 import { MuscleMap } from '../components/MuscleMap';
 import { Keypad } from '../components/Keypad';
@@ -348,8 +348,6 @@ function ExerciseContent({
 
   return (
     <div className="stack gap-16" style={{ paddingBottom: 12 }}>
-      {/* hero */}
-      <StripedPlaceholder label="illustration" style={{ height: 160 }} />
       <div>
         <div className="label-medium muted">EXERCISE {exerciseNumber}{isAdded ? ' · ADDED' : ''}</div>
         <h1 className="headline-large" style={{ margin: '6px 0 10px' }}>{ex?.name ?? 'Exercise'}</h1>

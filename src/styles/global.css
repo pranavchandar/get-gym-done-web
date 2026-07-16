@@ -251,21 +251,6 @@ textarea.field { resize: vertical; min-height: 60px; }
 .stepper.mini button { width: 26px; height: 26px; font-size: 15px; border-radius: 8px; }
 .stepper.mini .value { min-width: 30px; font-size: 15px; }
 
-/* ============================================================= Striped placeholder */
-.striped {
-  background-color: var(--surface2);
-  background-image: repeating-linear-gradient(
-    -45deg,
-    var(--line) 0, var(--line) 1px,
-    transparent 1px, transparent 12px,
-    var(--line) 12px, var(--line) 13px,
-    transparent 13px, transparent 30px
-  );
-  border-radius: 14px;
-  display: flex; align-items: center; justify-content: center;
-  color: var(--fg3); font-weight: 700; font-size: 12px; letter-spacing: 1px;
-}
-
 /* ============================================================= Progress bars */
 .track { height: 6px; border-radius: 999px; background: var(--surface3); overflow: hidden; }
 .track > div { height: 100%; background: var(--accent-primary); border-radius: 999px; transition: width 0.3s ease; }

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useStore } from '../store/store';
 import { daysOf, dayExercisesOf } from '../store/selectors';
-import { TopBar, BigCta, GhostCta, SegTabs, Sheet, StripedPlaceholder, PillChip, Stepper } from '../components/ui';
+import { TopBar, BigCta, GhostCta, SegTabs, Sheet, InitialTile, PillChip, Stepper } from '../components/ui';
 import { Swap, Edit, Bed, Check, ArrowRight, ChevronUp, ChevronDown, Trash, Plus } from '../components/icons';
 import { ExercisePicker } from '../components/ExercisePicker';
 
@@ -78,7 +78,7 @@ export function DayOverviewScreen() {
                   return (
                     <div key={de.id} className="card row gap-12">
                       <span className="display-small" style={{ color: 'var(--fg3)', width: 28 }}>{i + 1}</span>
-                      <StripedPlaceholder label="gif" style={{ width: 56, height: 56, flex: '0 0 auto' }} />
+                      <InitialTile name={ex?.name ?? '?'} />
                       <div className="stack grow">
                         <span className="title-small">{ex?.name ?? 'Exercise'}</span>
                         <span className="body-small muted">{ex?.primaryMuscle ?? ''}</span>
