@@ -297,6 +297,9 @@ function ExerciseContent({
 }) {
   const state = useStore();
   const ex = state.exercises[exId];
+  const isBW = ex?.equipment === 'Bodyweight';
+  const fmtSetWeight = (display: number) =>
+    isBW ? (display === 0 ? 'BW' : `BW +${formatNum(display)} ${unit}`) : `${formatNum(display)} ${unit}`;
   const { setCount, activeSetNumber, doneCount, doneNumbers, p } = info;
 
   const history = useMemo(() => completedHistoryForExercise(state, exId), [state, exId]);
@@ -325,7 +328,7 @@ function ExerciseContent({
       const last = lastLogs[lastLogs.length - 1];
       return { weightDisplay: roundDisplay(kgToDisplay(last.weightKg, unit), unit), reps: last.reps };
     }
-    return { weightDisplay: defaultStartDisplayWeight(unit), reps: p.low };
+    return { weightDisplay: isBW ? 0 : defaultStartDisplayWeight(unit), reps: p.low };
   };
 
   const [draft, setDraft] = useState(() => (activeSetNumber ? prefill(activeSetNumber) : { weightDisplay: 0, reps: 0 }));
@@ -341,7 +344,10 @@ function ExerciseContent({
   const step = displayStep(unit);
   const suggestedDisplay = suggestion ? roundDisplay(kgToDisplay(suggestion.suggestedWeightKg, unit), unit) : null;
   const showSuggestion =
-    suggestedDisplay != null && activeSetNumber != null && draft.weightDisplay < suggestedDisplay - 1e-3;
+    suggestedDisplay != null &&
+    activeSetNumber != null &&
+    draft.weightDisplay < suggestedDisplay - 1e-3 &&
+    !(isBW && suggestion != null && suggestion.currentWeightKg === 0);
 
   const anyDone = doneCount > 0;
 
@@ -417,7 +423,13 @@ function ExerciseContent({
               <span className="label-medium muted" style={{ width: 46 }}>SET {n}</span>
               {done && log ? (
                 <div className="row grow gap-8">
-                  <span className="title-small grow">{formatWeight(log.weightKg, unit)} {unit} · {log.reps} reps</span>
+                  <span className="title-small grow">
+                    {isBW
+                      ? log.weightKg === 0
+                        ? 'BW'
+                        : `BW +${formatWeight(log.weightKg, unit)} ${unit}`
+                      : `${formatWeight(log.weightKg, unit)} ${unit}`} · {log.reps} reps
+                  </span>
                   <Check size={18} className="accent" />
                 </div>
               ) : isActive ? (
@@ -428,7 +440,7 @@ function ExerciseContent({
                     min={0}
                     onChange={(v) => setDraft((d) => ({ ...d, weightDisplay: roundDisplay(v, unit) }))}
                     onValueTap={() => onOpenKeypad('weight')}
-                    format={(v) => `${formatNum(v)} ${unit}`}
+                    format={fmtSetWeight}
                   />
                   <Stepper
                     value={draft.reps}
