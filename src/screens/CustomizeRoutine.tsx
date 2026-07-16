@@ -41,7 +41,7 @@ export function CustomizeRoutineScreen() {
   const [picking, setPicking] = useState(false);
 
   const day = draft.days[dayIdx];
-  const canLock = draft.days.some((d) => d.exercises.length > 0);
+  const canLock = draft.days.some((d) => !d.isRestDay && d.exercises.length > 0);
 
   const setDayCount = (n: number) => {
     const target = Math.max(MIN_DAYS, Math.min(MAX_DAYS, n));
@@ -126,7 +126,7 @@ export function CustomizeRoutineScreen() {
               <input
                 type="checkbox"
                 checked={day.isRestDay}
-                onChange={(e) => patchDay(dayIdx, { isRestDay: e.target.checked, exercises: e.target.checked ? [] : day.exercises })}
+                onChange={(e) => patchDay(dayIdx, { isRestDay: e.target.checked })}
               />
               <span className="body-medium">Rest day</span>
             </label>

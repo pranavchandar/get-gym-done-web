@@ -216,18 +216,20 @@ export const useStore = create<Store>()(
             muscleGroups: [],
             isRestDay: d.isRestDay,
           };
-          d.exercises.forEach((ex, oi) => {
-            const id = uid();
-            dayExercises[id] = {
-              id,
-              workoutDayId: dayId,
-              exerciseId: ex.exerciseId,
-              orderIndex: oi,
-              prescribedSets: ex.sets,
-              prescribedRepsLow: ex.repsLow,
-              prescribedRepsHigh: ex.repsHigh,
-            };
-          });
+          if (!d.isRestDay) {
+            d.exercises.forEach((ex, oi) => {
+              const id = uid();
+              dayExercises[id] = {
+                id,
+                workoutDayId: dayId,
+                exerciseId: ex.exerciseId,
+                orderIndex: oi,
+                prescribedSets: ex.sets,
+                prescribedRepsLow: ex.repsLow,
+                prescribedRepsHigh: ex.repsHigh,
+              };
+            });
+          }
         });
         const split: Split = { id: splitId, name: draft.name.trim() || 'My Routine', dayCount: draft.days.length, isCustom: true };
         set((s) => ({
