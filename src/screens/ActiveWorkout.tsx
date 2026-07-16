@@ -5,7 +5,7 @@ import { dayExercisesOf, sessionLogs, completedHistoryForExercise, lastCompleted
 import { weightIncreaseSuggestion } from '../domain/progression';
 import { kgToDisplay, displayToKg, displayStep, incrementKgFor, formatWeight, roundDisplay, defaultStartDisplayWeight } from '../domain/units';
 import { BigCta, GhostCta, Stepper, PillChip, Sheet, Dialog } from '../components/ui';
-import { X, More, Check, MinusCircle, Plus, ArrowRight } from '../components/icons';
+import { X, More, Check, MinusCircle, Plus, ArrowRight, ChevronUp } from '../components/icons';
 import { MuscleMap } from '../components/MuscleMap';
 import { Keypad } from '../components/Keypad';
 import { ExercisePicker } from '../components/ExercisePicker';
@@ -53,6 +53,7 @@ export function ActiveWorkoutScreen() {
   const [picker, setPicker] = useState<null | 'add' | 'replace'>(null);
   const [keypad, setKeypad] = useState<null | 'weight' | 'reps'>(null);
   const [confirmFinish, setConfirmFinish] = useState(false);
+  const [restCollapsed, setRestCollapsed] = useState(false);
 
   const active = state.activeSession;
 
@@ -198,6 +199,8 @@ export function ActiveWorkoutScreen() {
           onAdjust={adjustRestTimer}
           onSkip={clearRestTimer}
           onDone={clearRestTimer}
+          collapsed={restCollapsed}
+          onToggleCollapsed={() => setRestCollapsed((c) => !c)}
         />
       )}
 
@@ -517,12 +520,16 @@ function RestOverlay({
   onAdjust,
   onSkip,
   onDone,
+  collapsed,
+  onToggleCollapsed,
 }: {
   endAt: number;
   duration: number;
   onAdjust: (delta: number) => void;
   onSkip: () => void;
   onDone: () => void;
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
 }) {
   const [now, setNow] = useState(Date.now());
   const firedRef = useRef(false);
@@ -560,6 +567,21 @@ function RestOverlay({
   const R = 84;
   const C = 2 * Math.PI * R;
 
+  if (collapsed) {
+    return (
+      <div className="rest-bar">
+        <span className="title-medium" style={{ fontVariantNumeric: 'tabular-nums' }}>{mins}:{String(secs).padStart(2, '0')}</span>
+        <span className="label-small muted">REST</span>
+        <div className="row gap-6">
+          <button className="icon-btn" style={{ width: 40, height: 40 }} onClick={() => onAdjust(-30)}>−30</button>
+          <button className="icon-btn" style={{ width: 40, height: 40 }} onClick={() => onAdjust(30)}>+30</button>
+          <button className="icon-btn" style={{ width: 40, height: 40 }} onClick={onSkip} aria-label="Skip rest"><X size={16} /></button>
+          <button className="icon-btn" style={{ width: 40, height: 40 }} onClick={onToggleCollapsed} aria-label="Expand timer"><ChevronUp size={16} /></button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="rest-overlay">
       {notifPrompt && (
@@ -588,6 +610,7 @@ function RestOverlay({
         <button className="icon-btn" style={{ width: 56, height: 56 }} onClick={() => onAdjust(30)}>+30s</button>
       </div>
       <button className="ghost-cta" style={{ maxWidth: 200 }} onClick={onSkip}>Skip</button>
+      <button className="ghost-cta" style={{ maxWidth: 200 }} onClick={onToggleCollapsed}>Minimize</button>
     </div>
   );
 }

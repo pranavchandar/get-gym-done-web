@@ -439,6 +439,24 @@ textarea.field { resize: vertical; min-height: 60px; }
   animation: fade 0.2s ease;
 }
 
+.rest-bar {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  width: min(calc(100% - 32px), calc(var(--maxw) - 32px));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--surface2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  z-index: 50;
+  animation: fade 0.2s ease;
+}
+
 .heatmap { display: flex; gap: 3px; overflow-x: auto; padding-bottom: 6px; }
 .heatmap .col { display: flex; flex-direction: column; gap: 3px; }
 .hm-cell { width: 12px; height: 12px; border-radius: 3px; background: var(--surface2); }
