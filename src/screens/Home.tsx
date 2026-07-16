@@ -207,9 +207,9 @@ export function HomeScreen() {
             <button
               className="big-cta grow"
               style={{ background: 'var(--on-accent)', color: 'var(--accent-primary)', minHeight: 52 }}
-              onClick={() => navigate(`/workout/${upNext.id}`)}
+              onClick={() => navigate(upNextExs.length === 0 ? `/day/${upNext.id}` : `/workout/${upNext.id}`)}
             >
-              Start workout <ArrowRight size={20} />
+              {upNextExs.length === 0 ? 'Add exercises' : 'Start workout'} <ArrowRight size={20} />
             </button>
             <button
               className="icon-btn"

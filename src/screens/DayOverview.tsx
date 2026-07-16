@@ -111,9 +111,15 @@ export function DayOverviewScreen() {
 
       {!day.isRestDay && (
         <div className="pad">
-          <BigCta onClick={() => navigate(`/workout/${day.id}`)}>
-            {tab === 'warmup' ? 'Start warmup' : 'Start workout'} <ArrowRight size={22} />
-          </BigCta>
+          {exs.length === 0 ? (
+            <BigCta onClick={() => setEditing(true)}>
+              Add exercises <ArrowRight size={22} />
+            </BigCta>
+          ) : (
+            <BigCta onClick={() => navigate(`/workout/${day.id}`)}>
+              {tab === 'warmup' ? 'Start warmup' : 'Start workout'} <ArrowRight size={22} />
+            </BigCta>
+          )}
         </div>
       )}
 
