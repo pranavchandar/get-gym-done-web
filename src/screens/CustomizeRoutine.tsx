@@ -108,6 +108,9 @@ export function CustomizeRoutineScreen() {
         <h1 className="display-small" style={{ margin: '0 0 8px' }}>
           BUILD YOUR<br />ROUTINE.
         </h1>
+        <div className="track mb-16">
+          <div style={{ width: '100%' }} />
+        </div>
         <p className="body-medium muted mb-16">
           {seedSplitId ? 'Tweak the template — swap exercises, adjust reps, rename days.' : 'Name it, set your days, and add exercises.'}
         </p>
