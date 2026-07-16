@@ -3,8 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useStore } from '../store/store';
 import { dayExercisesOf, sessionLogs, completedHistoryForExercise, lastCompletedLogsForExercise } from '../store/selectors';
 import { weightIncreaseSuggestion } from '../domain/progression';
-import { kgToDisplay, displayToKg, displayStep, incrementKgFor, formatWeight } from '../domain/units';
-import { DEFAULT_START_WEIGHT_KG } from '../types';
+import { kgToDisplay, displayToKg, displayStep, incrementKgFor, formatWeight, roundDisplay, defaultStartDisplayWeight } from '../domain/units';
 import { BigCta, GhostCta, Stepper, PillChip, Sheet, Dialog } from '../components/ui';
 import { X, More, Check, MinusCircle, Plus, ArrowRight } from '../components/icons';
 import { MuscleMap } from '../components/MuscleMap';
@@ -311,16 +310,16 @@ function ExerciseContent({
       const cur = [...info.exLogs].sort((a, b) => a.setNumber - b.setNumber);
       if (cur.length) {
         const last = cur[cur.length - 1];
-        return { weightDisplay: round(kgToDisplay(last.weightKg, unit)), reps: last.reps };
+        return { weightDisplay: roundDisplay(kgToDisplay(last.weightKg, unit), unit), reps: last.reps };
       }
     }
     const same = lastLogs.find((l) => l.setNumber === n);
-    if (same) return { weightDisplay: round(kgToDisplay(same.weightKg, unit)), reps: same.reps };
+    if (same) return { weightDisplay: roundDisplay(kgToDisplay(same.weightKg, unit), unit), reps: same.reps };
     if (lastLogs.length) {
       const last = lastLogs[lastLogs.length - 1];
-      return { weightDisplay: round(kgToDisplay(last.weightKg, unit)), reps: last.reps };
+      return { weightDisplay: roundDisplay(kgToDisplay(last.weightKg, unit), unit), reps: last.reps };
     }
-    return { weightDisplay: round(kgToDisplay(DEFAULT_START_WEIGHT_KG, unit)), reps: p.low };
+    return { weightDisplay: defaultStartDisplayWeight(unit), reps: p.low };
   };
 
   const [draft, setDraft] = useState(() => (activeSetNumber ? prefill(activeSetNumber) : { weightDisplay: 0, reps: 0 }));
@@ -334,7 +333,7 @@ function ExerciseContent({
   }, [activeSetNumber, exId]);
 
   const step = displayStep(unit);
-  const suggestedDisplay = suggestion ? round(kgToDisplay(suggestion.suggestedWeightKg, unit)) : null;
+  const suggestedDisplay = suggestion ? roundDisplay(kgToDisplay(suggestion.suggestedWeightKg, unit), unit) : null;
   const showSuggestion =
     suggestedDisplay != null && activeSetNumber != null && draft.weightDisplay < suggestedDisplay - 1e-3;
 
@@ -421,7 +420,7 @@ function ExerciseContent({
                     value={draft.weightDisplay}
                     step={step}
                     min={0}
-                    onChange={(v) => setDraft((d) => ({ ...d, weightDisplay: round(v) }))}
+                    onChange={(v) => setDraft((d) => ({ ...d, weightDisplay: roundDisplay(v, unit) }))}
                     onValueTap={() => onOpenKeypad('weight')}
                     format={(v) => `${formatNum(v)} ${unit}`}
                   />
@@ -475,7 +474,7 @@ function ExerciseContent({
           initial={keypad === 'weight' ? draft.weightDisplay : draft.reps}
           onClose={onCloseKeypad}
           onSave={(v) => {
-            if (keypad === 'weight') setDraft((d) => ({ ...d, weightDisplay: round(v) }));
+            if (keypad === 'weight') setDraft((d) => ({ ...d, weightDisplay: roundDisplay(v, unit) }));
             else setDraft((d) => ({ ...d, reps: Math.round(v) }));
           }}
         />
@@ -637,9 +636,6 @@ function Terminal({ title, body, onBack }: { title: string; body: string; onBack
   );
 }
 
-function round(v: number): number {
-  return Math.round(v * 100) / 100;
-}
 function formatNum(v: number): string {
   return Number.isInteger(v) ? String(v) : String(parseFloat(v.toFixed(2)));
 }

@@ -24,13 +24,18 @@ export function incrementKgFor(unit: Units): number {
 }
 
 /** Round a display value to a sensible precision for the unit. */
-export function roundDisplay(value: number): number {
-  return Math.round(value * 100) / 100;
+export function roundDisplay(value: number, unit: Units): number {
+  return unit === 'lbs' ? Math.round(value * 2) / 2 : Math.round(value * 100) / 100;
+}
+
+/** Default prefill weight in display units — snapped to the unit's plate grid. */
+export function defaultStartDisplayWeight(unit: Units): number {
+  return unit === 'lbs' ? 45 : 20;
 }
 
 /** Format a weight (stored kg) for display, trimming trailing zeros. */
 export function formatWeight(kg: number, unit: Units): string {
-  const v = roundDisplay(kgToDisplay(kg, unit));
+  const v = roundDisplay(kgToDisplay(kg, unit), unit);
   if (Number.isInteger(v)) return String(v);
   return String(parseFloat(v.toFixed(2)));
 }
