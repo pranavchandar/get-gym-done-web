@@ -16,7 +16,7 @@ export function RoutineMethodScreen() {
           HOW DO YOU<br />
           <span className="accent">WANT IT?</span>
         </h1>
-        <p className="body-medium muted mb-24">Curate from your PDF, or assemble exercises day-by-day.</p>
+        <p className="body-medium muted mb-24">Use the preset as-is, or assemble exercises day-by-day.</p>
 
         <div className="stack gap-16">
           <MethodCard
