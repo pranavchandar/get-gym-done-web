@@ -117,7 +117,7 @@ a { color: inherit; text-decoration: none; }
 .app-frame {
   width: 100%;
   max-width: var(--maxw);
-  min-height: 100%;
+  height: 100%;
   background: var(--bg);
   color: var(--fg);
   position: relative;
@@ -125,8 +125,8 @@ a { color: inherit; text-decoration: none; }
   flex-direction: column;
   overflow-x: hidden;
 }
-.screen { flex: 1; display: flex; flex-direction: column; }
-.screen-scroll { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.screen { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.screen-scroll { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; min-height: 0; }
 .pad { padding: 20px; }
 .pad-h { padding-left: 20px; padding-right: 20px; }
 .stack { display: flex; flex-direction: column; }

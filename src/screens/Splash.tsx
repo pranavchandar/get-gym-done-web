@@ -12,7 +12,7 @@ export function SplashScreen() {
 
   return (
     <div className="ob screen" style={{ minHeight: '100%' }}>
-      <div className="screen-scroll pad" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: '100vh' }}>
+      <div className="screen-scroll pad" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: '100%' }}>
         <div>
           <div className="row-between">
             <span className="label-medium accent">V1.0 — BETA</span>
