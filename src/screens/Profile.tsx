@@ -327,22 +327,65 @@ function BodyStat({ label, value, prev, curr, invert }: { label: string; value: 
   );
 }
 
+const BW_KG_MIN = 20;
+const BW_KG_MAX = 400;
+const FAT_MIN = 2;
+const FAT_MAX = 70;
+const MUSCLE_KG_MIN = 10;
+const MUSCLE_KG_MAX = 150;
+
 function LogBodySheet({ unit, onClose, onSave }: { unit: 'kg' | 'lbs'; onClose: () => void; onSave: (m: { bodyweightKg?: number | null; bodyFatPct?: number | null; muscleMassKg?: number | null }) => void }) {
   const [w, setW] = useState('');
   const [f, setF] = useState('');
   const [m, setM] = useState('');
   const kg = (v: string) => (v ? (unit === 'lbs' ? Number(v) * 0.45359237 : Number(v)) : null);
+
+  const weightRangeLabel = (minKg: number, maxKg: number) =>
+    `Enter ${Math.round(kgToDisplay(minKg, unit))}–${Math.round(kgToDisplay(maxKg, unit))} ${unit}`;
+
+  const wErr = (() => {
+    if (!w) return null;
+    const kgVal = kg(w);
+    if (kgVal === null || !Number.isFinite(kgVal)) return weightRangeLabel(BW_KG_MIN, BW_KG_MAX);
+    if (kgVal < BW_KG_MIN || kgVal > BW_KG_MAX) return weightRangeLabel(BW_KG_MIN, BW_KG_MAX);
+    return null;
+  })();
+
+  const fErr = (() => {
+    if (!f) return null;
+    const fVal = Number(f);
+    if (!Number.isFinite(fVal) || fVal < FAT_MIN || fVal > FAT_MAX) return `Enter ${FAT_MIN}–${FAT_MAX} %`;
+    return null;
+  })();
+
+  const mErr = (() => {
+    if (!m) return null;
+    const kgVal = kg(m);
+    if (kgVal === null || !Number.isFinite(kgVal)) return weightRangeLabel(MUSCLE_KG_MIN, MUSCLE_KG_MAX);
+    if (kgVal < MUSCLE_KG_MIN || kgVal > MUSCLE_KG_MAX) return weightRangeLabel(MUSCLE_KG_MIN, MUSCLE_KG_MAX);
+    return null;
+  })();
+
   return (
     <Sheet onClose={onClose}>
       <div className="headline-small mb-16">Log body metrics</div>
       <div className="stack gap-12">
-        <input className="field" inputMode="decimal" placeholder={`Bodyweight (${unit})`} value={w} onChange={(e) => setW(e.target.value.replace(/[^\d.]/g, ''))} />
-        <input className="field" inputMode="decimal" placeholder="Body fat %" value={f} onChange={(e) => setF(e.target.value.replace(/[^\d.]/g, ''))} />
-        <input className="field" inputMode="decimal" placeholder={`Muscle mass (${unit})`} value={m} onChange={(e) => setM(e.target.value.replace(/[^\d.]/g, ''))} />
+        <div>
+          <input className="field" inputMode="decimal" placeholder={`Bodyweight (${unit})`} value={w} onChange={(e) => setW(e.target.value.replace(/[^\d.]/g, ''))} />
+          {wErr && <div className="body-small" style={{ color: 'var(--coral)' }}>{wErr}</div>}
+        </div>
+        <div>
+          <input className="field" inputMode="decimal" placeholder="Body fat %" value={f} onChange={(e) => setF(e.target.value.replace(/[^\d.]/g, ''))} />
+          {fErr && <div className="body-small" style={{ color: 'var(--coral)' }}>{fErr}</div>}
+        </div>
+        <div>
+          <input className="field" inputMode="decimal" placeholder={`Muscle mass (${unit})`} value={m} onChange={(e) => setM(e.target.value.replace(/[^\d.]/g, ''))} />
+          {mErr && <div className="body-small" style={{ color: 'var(--coral)' }}>{mErr}</div>}
+        </div>
       </div>
       <div className="mt-20">
         <BigCta
-          disabled={!w && !f && !m}
+          disabled={(!w && !f && !m) || !!wErr || !!fErr || !!mErr}
           onClick={() => {
             onSave({ bodyweightKg: kg(w), bodyFatPct: f ? Number(f) : null, muscleMassKg: kg(m) });
             onClose();
