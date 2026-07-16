@@ -28,7 +28,8 @@ export function DayOverviewScreen() {
     );
   }
 
-  const focus = day.muscleGroups[0] ?? day.name;
+  const primaries = [...new Set(exs.map((de) => state.exercises[de.exerciseId]?.primaryMuscle).filter((m): m is string => !!m))];
+  const focus = primaries.length ? primaries.slice(0, 2).join(' & ') : (day.muscleGroups[0] ?? day.name);
 
   return (
     <div className="screen">
@@ -117,7 +118,7 @@ export function DayOverviewScreen() {
             </BigCta>
           ) : (
             <BigCta onClick={() => navigate(`/workout/${day.id}`)}>
-              {tab === 'warmup' ? 'Start warmup' : 'Start workout'} <ArrowRight size={22} />
+              Start workout <ArrowRight size={22} />
             </BigCta>
           )}
         </div>
