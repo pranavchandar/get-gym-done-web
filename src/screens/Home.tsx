@@ -179,7 +179,7 @@ export function HomeScreen() {
           <div className="headline-large" style={{ marginTop: 6 }}>DAY {activeSessDay.dayNumber}</div>
           <div className="title-medium" style={{ opacity: 0.85 }}>{activeSessDay.name}</div>
           <div className="body-small" style={{ opacity: 0.8, marginTop: 8 }}>
-            {activeSessSets} sets logged{activeSessStarted ? ` · started ${formatElapsed(activeSessStarted, nowTick)} ago` : ''}
+            {activeSessSets} set{activeSessSets === 1 ? '' : 's'} logged{activeSessStarted ? ` · started ${formatElapsed(activeSessStarted, nowTick)} ago` : ''}
           </div>
           <div className="row gap-8 mt-16">
             <button
