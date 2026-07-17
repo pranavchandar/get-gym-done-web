@@ -219,8 +219,11 @@ function CloudSync({ onPullRequest }: { onPullRequest: (text: string) => void })
       {status && <div className="row gap-6 body-small accent"><Check size={14} /> {status}</div>}
       {error && <div className="body-small" style={{ color: 'var(--coral)' }}>{error}</div>}
       <div className="body-small muted">
-        {gistId ? 'Gist connected. ' : 'No gist yet — push to create one. '}
-        {lastSync ? `Last sync ${new Date(lastSync).toLocaleString()}.` : 'Never synced.'}
+        {gistId
+          ? lastSync
+            ? `Gist connected · last sync ${new Date(lastSync).toLocaleString()}.`
+            : 'Gist connected.'
+          : 'No gist yet — push to create one.'}
       </div>
     </div>
   );

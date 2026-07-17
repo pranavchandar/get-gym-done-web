@@ -46,15 +46,36 @@ function headers(token: string): Record<string, string> {
   };
 }
 
+async function ghFetch(url: string, init?: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch {
+    throw new Error("Couldn't reach GitHub — check your connection.");
+  }
+}
+
 async function ghError(res: Response): Promise<never> {
-  let msg = `${res.status} ${res.statusText}`;
+  let bodyMessage: string | undefined;
   try {
     const body = await res.json();
-    if (body && body.message) msg = body.message;
+    if (body && body.message) bodyMessage = body.message;
   } catch {
     /* ignore */
   }
-  throw new Error(msg);
+
+  if (res.status === 401) {
+    throw new Error('Token rejected — check that it has the gist scope.');
+  }
+  if (res.status === 403) {
+    if (bodyMessage && /rate limit/i.test(bodyMessage)) {
+      throw new Error('GitHub rate limit hit — try again in a few minutes.');
+    }
+    throw new Error('Access denied — the token may lack the gist scope.');
+  }
+  if (res.status === 404) {
+    throw new Error('Gist not found — it may have been deleted. Disconnect and push again.');
+  }
+  throw new Error(bodyMessage ?? `${res.status} ${res.statusText}`);
 }
 
 /** Push the current backup to the configured gist (create if none). */
@@ -68,7 +89,7 @@ export async function pushToGist(): Promise<void> {
     files: { [GIST_FILENAME]: { content } },
   });
   const url = id ? `${API}/gists/${id}` : `${API}/gists`;
-  const res = await fetch(url, {
+  const res = await ghFetch(url, {
     method: id ? 'PATCH' : 'POST',
     headers: headers(token),
     body,
@@ -85,14 +106,14 @@ export async function pullFromGist(): Promise<string> {
   if (!token) throw new Error('No token configured.');
   const id = getGistId();
   if (!id) throw new Error('Nothing pushed yet — push first.');
-  const res = await fetch(`${API}/gists/${id}`, { headers: headers(token) });
+  const res = await ghFetch(`${API}/gists/${id}`, { headers: headers(token) });
   if (!res.ok) await ghError(res);
   const data = await res.json();
   const file = data.files?.[GIST_FILENAME];
   if (!file) throw new Error('Backup file not found in gist.');
   let content: string = file.content ?? '';
   if (file.truncated && file.raw_url) {
-    const rawRes = await fetch(file.raw_url, { headers: { Authorization: `Bearer ${token}` } });
+    const rawRes = await ghFetch(file.raw_url, { headers: { Authorization: `Bearer ${token}` } });
     if (!rawRes.ok) await ghError(rawRes);
     content = await rawRes.text();
   }
