@@ -118,7 +118,7 @@ export function CustomizeRoutineScreen() {
         <label className="label-medium muted">Routine name</label>
         <input
           className="field mt-8 mb-16"
-          placeholder="e.g. My Routine"
+          placeholder="My Routine"
           value={draft.name}
           onChange={(e) => setDraft((p) => ({ ...p, name: e.target.value }))}
         />
