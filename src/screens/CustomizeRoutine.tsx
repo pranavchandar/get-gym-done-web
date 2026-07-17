@@ -140,8 +140,10 @@ export function CustomizeRoutineScreen() {
           <div className="card mb-16">
             <input
               className="field mb-16"
-              placeholder="Day name"
-              value={day.name}
+              placeholder={day.isRestDay ? 'Rest day' : 'Day name'}
+              value={day.isRestDay ? '' : day.name}
+              disabled={day.isRestDay}
+              style={day.isRestDay ? { opacity: 0.5 } : undefined}
               onChange={(e) => patchDay(dayIdx, { name: e.target.value })}
             />
             <label className="row gap-8 mb-16" style={{ cursor: 'pointer' }}>
