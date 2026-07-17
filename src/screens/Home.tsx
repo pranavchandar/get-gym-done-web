@@ -487,6 +487,7 @@ function DaySessionsSheet({
   label: string;
   onClose: () => void;
 }) {
+  const navigate = useNavigate();
   const state = useStore();
   const unit = state.prefs.units;
   const sessions = sessionsByEpochDay(state).get(ed) ?? [];
@@ -518,12 +519,13 @@ function DaySessionsSheet({
             const logs = sessionLogs(state, s.id);
             const vol = Math.round(kgToDisplay(totalVolumeKg(logs), unit));
             return (
-              <div key={s.id} className="card" style={{ padding: 14 }}>
+              <button key={s.id} className="card row-between" style={{ padding: 14, color: 'var(--fg)', textAlign: 'left' }} onClick={() => { onClose(); navigate(`/complete/${s.id}`); }}>
                 <div className="stack">
                   <span className="title-small">{wd?.name ?? 'Workout'}</span>
                   <span className="body-small muted">{logs.length} sets · {vol} {unit} · {time}</span>
                 </div>
-              </div>
+                <ChevronRight size={18} className="muted" />
+              </button>
             );
           }
 

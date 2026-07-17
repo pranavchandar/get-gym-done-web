@@ -73,7 +73,7 @@ export function WorkoutCompleteScreen() {
   }
 
   const backHome = () => {
-    armConfetti();
+    if (session?.completedAt != null && Date.now() - session.completedAt < 5 * 60_000) armConfetti();
     navigate('/home');
   };
 
