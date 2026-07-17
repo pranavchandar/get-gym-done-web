@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useStore } from '../store/store';
 import { daysOf, dayExercisesOf } from '../store/selectors';
+import { estimateDurationMin } from '../domain/metrics';
 import { TopBar, BigCta, GhostCta, SegTabs, Sheet, InitialTile, PillChip, Stepper } from '../components/ui';
 import { Swap, Edit, Bed, Check, ArrowRight, ChevronUp, ChevronDown, Trash, Plus } from '../components/icons';
 import { ExercisePicker } from '../components/ExercisePicker';
@@ -28,6 +29,7 @@ export function DayOverviewScreen() {
     );
   }
 
+  const totalSets = exs.reduce((a, e) => a + e.prescribedSets, 0);
   const primaries = [...new Set(exs.map((de) => state.exercises[de.exerciseId]?.primaryMuscle).filter((m): m is string => !!m))];
   const focus = primaries.length ? primaries.slice(0, 2).join(' & ') : (day.muscleGroups[0] ?? day.name);
 
@@ -63,7 +65,7 @@ export function DayOverviewScreen() {
             <h1 className="display-small" style={{ margin: '6px 0 12px' }}>{day.name}</h1>
             <div className="row gap-8 mb-16">
               <PillChip label={`${exs.length} exercises`} variant="surface" />
-              <PillChip label={`~${exs.length * 11} min`} variant="surface" />
+              <PillChip label={`~${estimateDurationMin(totalSets, state.prefs.restSeconds)} min`} variant="surface" />
             </div>
 
             <SegTabs

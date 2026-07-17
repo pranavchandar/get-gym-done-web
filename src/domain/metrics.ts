@@ -59,3 +59,9 @@ export function countPRs(
   }
   return count;
 }
+
+/** Rough session duration: each set ≈ rest interval + ~40s of lifting. */
+export function estimateDurationMin(totalSets: number, restSeconds: number): number {
+  if (totalSets <= 0) return 0;
+  return Math.max(5, Math.round((totalSets * (restSeconds + 40)) / 60));
+}

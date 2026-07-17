@@ -16,7 +16,7 @@ import {
 import { maxConsecutiveRestDays } from '../domain/rotation';
 import { currentStreakDays } from '../domain/streak';
 import { epochDayLocal, todayEpochDay, WEEKDAY_FULL, MONTH_NAMES } from '../domain/dates';
-import { isTrainingSession, totalVolumeKg } from '../domain/metrics';
+import { isTrainingSession, totalVolumeKg, estimateDurationMin } from '../domain/metrics';
 import { formatWeight, kgToDisplay } from '../domain/units';
 import { REST_SESSION_NOTE } from '../types';
 import type { Session } from '../types';
@@ -206,7 +206,7 @@ export function HomeScreen() {
           <div className="headline-large" style={{ marginTop: 6 }}>DAY {upNext.dayNumber}</div>
           <div className="title-medium" style={{ opacity: 0.85 }}>{upNext.name}</div>
           <div className="body-small" style={{ opacity: 0.8, marginTop: 8 }}>
-            {upNextExs.length} exercises · ~{upNextExs.length * 11} min · {upNextSets} sets
+            {upNextExs.length} exercises · ~{estimateDurationMin(upNextSets, state.prefs.restSeconds)} min · {upNextSets} sets
           </div>
           <div className="row gap-8 mt-16">
             <button
