@@ -102,11 +102,66 @@ function prefsFromBackup(raw: Partial<AndroidUserPrefs> | null | undefined): Use
   };
 }
 
+const BACKUP_RECORD_FIELDS = [
+  'exercises',
+  'splits',
+  'workoutDays',
+  'dayExercises',
+  'sessions',
+  'setLogs',
+  'bodyMetrics',
+] as const;
+
+/** Assert that data[field] is an array of non-null objects with a string `id`. */
+function assertRecordArray(data: Record<string, unknown>, field: string): void {
+  const arr = data[field];
+  if (!Array.isArray(arr)) {
+    throw new Error(`Invalid backup: "${field}" is missing or not a list.`);
+  }
+  for (const item of arr) {
+    if (typeof item !== 'object' || item === null || Array.isArray(item) || typeof (item as { id?: unknown }).id !== 'string') {
+      throw new Error(`Invalid backup: bad entry in "${field}".`);
+    }
+  }
+}
+
 /** Parse a backup JSON string, throwing on invalid shape. */
 export function parseBackup(text: string): BackupFile {
-  const data = JSON.parse(text);
-  if (typeof data !== 'object' || data == null) throw new Error('Invalid backup file');
+  let data: unknown;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error('Not a valid JSON file.');
+  }
+  if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+    throw new Error('Not a Get Gym Done backup file.');
+  }
+  const rec = data as Record<string, unknown>;
+  if (rec.version !== 2) {
+    throw new Error('Unsupported backup version — expected version 2.');
+  }
+  for (const field of BACKUP_RECORD_FIELDS) {
+    assertRecordArray(rec, field);
+  }
+  const userPrefs = rec.userPrefs;
+  if (userPrefs != null && (typeof userPrefs !== 'object' || Array.isArray(userPrefs))) {
+    throw new Error('Invalid backup: "userPrefs" is malformed.');
+  }
   return data as BackupFile;
+}
+
+export const PRE_IMPORT_BACKUP_KEY = 'get-gym-done:pre-import-backup';
+
+function downloadTextAsJson(text: string, filename: string): void {
+  const blob = new Blob([text], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 /** Full wipe + re-insert from a parsed backup. */
@@ -122,19 +177,25 @@ export function applyBackup(data: BackupFile): void {
     bodyMetrics: toRecord(data.bodyMetrics),
   };
   if (prefs) patch.prefs = prefs;
+
+  // Safety net: snapshot current data before wiping it, in case the import
+  // turns out to be unwanted or the user needs to recover.
+  const snapshot = serializeBackup();
+  try {
+    localStorage.setItem(PRE_IMPORT_BACKUP_KEY, snapshot);
+  } catch {
+    try {
+      downloadTextAsJson(snapshot, 'gymdone-pre-import-backup.json');
+    } catch {
+      // Best-effort only — never let the safety snapshot block the import.
+    }
+  }
+
   useStore.getState().replaceAll(patch);
 }
 
 export function downloadBackup(filename = 'gymdone-backup.json'): void {
-  const blob = new Blob([serializeBackup()], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  downloadTextAsJson(serializeBackup(), filename);
 }
 
 export async function readFileAsText(file: File): Promise<string> {

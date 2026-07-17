@@ -150,7 +150,7 @@ export function ProfileScreen() {
       <div className="row gap-8">
         <div className="stat-pill">
           <div className="big">{compactNumber(kgToDisplay(totalVolKg, unit))}</div>
-          <div className="label-small muted" style={{ marginTop: 4 }}>Total volume</div>
+          <div className="label-small muted" style={{ marginTop: 4 }}>{`Total volume (${unit})`}</div>
         </div>
         <div className="stat-pill">
           <div className="big">{sessionCount}</div>
@@ -190,9 +190,9 @@ export function ProfileScreen() {
           <button className="chip" onClick={() => setLoggingBody(true)}><Plus size={14} /> Log</button>
         </div>
         <div className="row gap-8">
-          <BodyStat label="Weight" value={weight.curr != null ? `${formatWeight(weight.curr, unit)}` : '—'} prev={weight.prev} curr={weight.curr} />
+          <BodyStat label="Weight" value={weight.curr != null ? `${formatWeight(weight.curr, unit)} ${unit}` : '—'} prev={weight.prev} curr={weight.curr} />
           <BodyStat label="Body fat" value={fat.curr != null ? `${fat.curr}%` : '—'} prev={fat.prev} curr={fat.curr} invert />
-          <BodyStat label="Muscle" value={muscle.curr != null ? `${formatWeight(muscle.curr, unit)}` : '—'} prev={muscle.prev} curr={muscle.curr} />
+          <BodyStat label="Muscle" value={muscle.curr != null ? `${formatWeight(muscle.curr, unit)} ${unit}` : '—'} prev={muscle.prev} curr={muscle.curr} />
         </div>
         {bodyExpanded && bm.length === 0 && (
           <div className="center muted body-small mt-16">No entries yet — tap + Log to record your first weigh-in.</div>
@@ -203,9 +203,9 @@ export function ProfileScreen() {
               <thead>
                 <tr className="label-small muted">
                   <td style={{ padding: '6px 4px' }}>Date</td>
-                  <td style={{ padding: '6px 4px' }}>Wt</td>
+                  <td style={{ padding: '6px 4px' }}>{`Wt (${unit})`}</td>
                   <td style={{ padding: '6px 4px' }}>Fat</td>
-                  <td style={{ padding: '6px 4px' }}>Musc</td>
+                  <td style={{ padding: '6px 4px' }}>{`Musc (${unit})`}</td>
                 </tr>
               </thead>
               <tbody>
@@ -230,7 +230,7 @@ export function ProfileScreen() {
         const label = key === 'bodyweightKg' ? 'Weight' : key === 'bodyFatPct' ? 'Body fat' : 'Muscle';
         const curr = series[series.length - 1];
         const deltaPct = series.length >= 2 && series[0] !== 0 ? ((series[series.length - 1] - series[0]) / series[0]) * 100 : null;
-        const display = key === 'bodyFatPct' ? `${curr}%` : formatWeight(curr, unit);
+        const display = key === 'bodyFatPct' ? `${curr}%` : `${formatWeight(curr, unit)} ${unit}`;
         return (
           <div key={key} className="card">
             <div className="row-between mb-8">
@@ -339,22 +339,65 @@ function BodyStat({ label, value, prev, curr, invert }: { label: string; value: 
   );
 }
 
+const BW_KG_MIN = 20;
+const BW_KG_MAX = 400;
+const FAT_MIN = 2;
+const FAT_MAX = 70;
+const MUSCLE_KG_MIN = 10;
+const MUSCLE_KG_MAX = 150;
+
 function LogBodySheet({ unit, onClose, onSave }: { unit: 'kg' | 'lbs'; onClose: () => void; onSave: (m: { bodyweightKg?: number | null; bodyFatPct?: number | null; muscleMassKg?: number | null }) => void }) {
   const [w, setW] = useState('');
   const [f, setF] = useState('');
   const [m, setM] = useState('');
   const kg = (v: string) => (v ? (unit === 'lbs' ? Number(v) * 0.45359237 : Number(v)) : null);
+
+  const weightRangeLabel = (minKg: number, maxKg: number) =>
+    `Enter ${Math.round(kgToDisplay(minKg, unit))}–${Math.round(kgToDisplay(maxKg, unit))} ${unit}`;
+
+  const wErr = (() => {
+    if (!w) return null;
+    const kgVal = kg(w);
+    if (kgVal === null || !Number.isFinite(kgVal)) return weightRangeLabel(BW_KG_MIN, BW_KG_MAX);
+    if (kgVal < BW_KG_MIN || kgVal > BW_KG_MAX) return weightRangeLabel(BW_KG_MIN, BW_KG_MAX);
+    return null;
+  })();
+
+  const fErr = (() => {
+    if (!f) return null;
+    const fVal = Number(f);
+    if (!Number.isFinite(fVal) || fVal < FAT_MIN || fVal > FAT_MAX) return `Enter ${FAT_MIN}–${FAT_MAX} %`;
+    return null;
+  })();
+
+  const mErr = (() => {
+    if (!m) return null;
+    const kgVal = kg(m);
+    if (kgVal === null || !Number.isFinite(kgVal)) return weightRangeLabel(MUSCLE_KG_MIN, MUSCLE_KG_MAX);
+    if (kgVal < MUSCLE_KG_MIN || kgVal > MUSCLE_KG_MAX) return weightRangeLabel(MUSCLE_KG_MIN, MUSCLE_KG_MAX);
+    return null;
+  })();
+
   return (
     <Sheet onClose={onClose}>
       <div className="headline-small mb-16">Log body metrics</div>
       <div className="stack gap-12">
-        <input className="field" inputMode="decimal" placeholder={`Bodyweight (${unit})`} value={w} onChange={(e) => setW(e.target.value.replace(/[^\d.]/g, ''))} />
-        <input className="field" inputMode="decimal" placeholder="Body fat %" value={f} onChange={(e) => setF(e.target.value.replace(/[^\d.]/g, ''))} />
-        <input className="field" inputMode="decimal" placeholder={`Muscle mass (${unit})`} value={m} onChange={(e) => setM(e.target.value.replace(/[^\d.]/g, ''))} />
+        <div>
+          <input className="field" inputMode="decimal" placeholder={`Bodyweight (${unit})`} value={w} onChange={(e) => setW(e.target.value.replace(/[^\d.]/g, ''))} />
+          {wErr && <div className="body-small" style={{ color: 'var(--coral)' }}>{wErr}</div>}
+        </div>
+        <div>
+          <input className="field" inputMode="decimal" placeholder="Body fat %" value={f} onChange={(e) => setF(e.target.value.replace(/[^\d.]/g, ''))} />
+          {fErr && <div className="body-small" style={{ color: 'var(--coral)' }}>{fErr}</div>}
+        </div>
+        <div>
+          <input className="field" inputMode="decimal" placeholder={`Muscle mass (${unit})`} value={m} onChange={(e) => setM(e.target.value.replace(/[^\d.]/g, ''))} />
+          {mErr && <div className="body-small" style={{ color: 'var(--coral)' }}>{mErr}</div>}
+        </div>
       </div>
       <div className="mt-20">
         <BigCta
-          disabled={!w && !f && !m}
+          disabled={(!w && !f && !m) || !!wErr || !!fErr || !!mErr}
           onClick={() => {
             onSave({ bodyweightKg: kg(w), bodyFatPct: f ? Number(f) : null, muscleMassKg: kg(m) });
             onClose();
@@ -389,7 +432,12 @@ function EditProfileSheet({ onClose, onSave }: { onClose: () => void; onSave: (p
       <div className="center mb-16">
         <Avatar name={name || 'ATHLETE'} color={color} photo={photo} size={72} />
       </div>
-      <input className="field mb-16" maxLength={20} placeholder="Name" value={name} onChange={(e) => setName(e.target.value.slice(0, 20))} />
+      <div className="mb-16">
+        <input className="field" maxLength={40} placeholder="Name" value={name} onChange={(e) => setName(e.target.value.slice(0, 40))} />
+        {name.length >= 30 && (
+          <div className="body-small muted" style={{ marginTop: 4, textAlign: 'right' }}>{name.length}/40</div>
+        )}
+      </div>
       <div className="label-medium muted mb-8">Avatar color</div>
       <div className="row wrap gap-8 mb-16">
         {ACCENT_PALETTES.map((p) => (

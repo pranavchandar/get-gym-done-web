@@ -10,19 +10,28 @@ import {
   completedByEpochDay,
   activityByEpochDay,
   bodyMetricsSorted,
+  sessionsByEpochDay,
+  sessionLogs,
 } from '../store/selectors';
 import { maxConsecutiveRestDays } from '../domain/rotation';
 import { currentStreakDays } from '../domain/streak';
 import { epochDayLocal, todayEpochDay, WEEKDAY_FULL, MONTH_NAMES } from '../domain/dates';
-import { isTrainingSession } from '../domain/metrics';
-import { formatWeight } from '../domain/units';
+import { isTrainingSession, totalVolumeKg, estimateDurationMin } from '../domain/metrics';
+import { formatWeight, kgToDisplay } from '../domain/units';
 import { REST_SESSION_NOTE } from '../types';
-import { BigCta, GhostCta, Dialog, TrendArrow } from '../components/ui';
+import type { Session } from '../types';
+import { BigCta, GhostCta, Dialog, Sheet, TrendArrow } from '../components/ui';
 import { Confetti } from '../components/Confetti';
-import { Reset, Swap, ArrowRight, Bed, Check, ChevronRight, ChevronUp, ChevronDown, Plus, Trash, Activity } from '../components/icons';
+import { List, ArrowRight, Bed, Check, ChevronRight, ChevronUp, ChevronDown, Plus, Trash, Activity } from '../components/icons';
 import { toast } from '../components/toast';
 
 const ACTIVITY_CHIPS = ['Running', 'Walking', 'Cycling', 'Swimming', 'Pickleball', 'Tennis', 'Table Tennis', 'Basketball', 'Soccer', 'Yoga', 'Hiking'];
+
+function formatElapsed(startedAt: number, now: number): string {
+  const mins = Math.max(1, Math.round((now - startedAt) / 60000));
+  if (mins < 60) return `${mins} min`;
+  return `${Math.floor(mins / 60)} h ${mins % 60} min`;
+}
 
 export function HomeScreen() {
   const navigate = useNavigate();
@@ -92,46 +101,60 @@ export function HomeScreen() {
 
   const completedMap = useMemo(() => completedByEpochDay(state), [state]);
   const activityMap = useMemo(() => activityByEpochDay(state), [state]);
+  const sessionsByDay = useMemo(() => sessionsByEpochDay(state), [state]);
 
-  const [showReset, setShowReset] = useState(false);
   const [showActivity, setShowActivity] = useState(false);
   const [editWeek, setEditWeek] = useState(false);
+  const [showConfetti, setShowConfetti] = useState(() => state.confettiArmed);
+  const [daySheet, setDaySheet] = useState<{ ed: number; label: string } | null>(null);
 
   const weekday = WEEKDAY_FULL[new Date().getDay()];
 
   const upNextExs = upNext ? dayExercisesOf(state, upNext.id) : [];
   const upNextSets = upNextExs.reduce((a, e) => a + e.prescribedSets, 0);
 
+  const activeSess = state.activeSession;
+  const activeSessDay = activeSess ? state.workoutDays[activeSess.workoutDayId] ?? null : null;
+  const activeSessStarted = activeSess ? state.sessions[activeSess.sessionId]?.startedAt ?? null : null;
+  const activeSessSets = activeSess ? Object.values(state.setLogs).filter((l) => l.sessionId === activeSess.sessionId).length : 0;
+
+  const [nowTick, setNowTick] = useState(Date.now());
+  useEffect(() => {
+    if (!activeSess) return;
+    const id = window.setInterval(() => setNowTick(Date.now()), 30000);
+    return () => window.clearInterval(id);
+  }, [activeSess]);
+
+  useEffect(() => {
+    if (state.confettiArmed) consumeConfetti();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <div className="pad stack gap-20" style={{ paddingBottom: 32 }}>
-      {state.confettiArmed && <Confetti onFinished={consumeConfetti} />}
+      {showConfetti && <Confetti onFinished={() => setShowConfetti(false)} />}
 
       {/* Header */}
-      <div className="row-between">
-        <div>
-          <div className="label-medium muted">TODAY · {weekday}</div>
-          <h1 className="display-medium" style={{ margin: '6px 0 0' }}>
-            READY TO<br />GET IT<span className="accent">.</span>
-          </h1>
-        </div>
-        <button className="icon-btn" aria-label="Reset routine" onClick={() => setShowReset(true)}>
-          <Reset size={18} />
-        </button>
+      <div>
+        <div className="label-medium muted">TODAY · {weekday}</div>
+        <h1 className="display-medium" style={{ margin: '6px 0 0' }}>
+          READY TO<br />GET IT<span className="accent">.</span>
+        </h1>
       </div>
 
       {/* Stat strip */}
       <div className="row gap-8">
-        <div className="stat-pill">
+        <div className="stat-pill" title="Any day with a logged workout or activity keeps the streak alive; scheduled rest days don't break it.">
           <div className="big">{streakDays > 0 ? `${streakDays}d` : '—'}</div>
           <div className="label-small muted" style={{ marginTop: 4 }}>{streakLost ? 'Streak lost' : 'Streak'}</div>
         </div>
-        <div className="stat-pill">
+        <div className="stat-pill" title="Routine days completed in the last 7 days.">
           <div className="big">{sessionsThisWeek}/{trainableDayCount}</div>
-          <div className="label-small muted" style={{ marginTop: 4 }}>This week</div>
+          <div className="label-small muted" style={{ marginTop: 4 }}>Last 7 days</div>
         </div>
         <div className="stat-pill">
           <div className="big row" style={{ justifyContent: 'center', gap: 4 }}>
-            {bwLatest != null ? formatWeight(bwLatest, unit) : '—'}
+            {bwLatest != null ? `${formatWeight(bwLatest, unit)} ${unit}` : '—'}
             <TrendArrow prev={bwPrev} curr={bwLatest} />
           </div>
           <div className="label-small muted" style={{ marginTop: 4 }}>Bodyweight</div>
@@ -149,22 +172,49 @@ export function HomeScreen() {
       )}
 
       {/* Up-next card */}
-      {upNext ? (
+      {activeSess && activeSessDay ? (
+        <div className="card" style={{ position: 'relative', overflow: 'hidden', background: 'var(--accent-primary)', color: 'var(--on-accent)', borderColor: 'var(--accent-primary)' }}>
+          <div className="watermark" style={{ color: 'var(--on-accent)' }}>D{activeSessDay.dayNumber}</div>
+          <div className="label-medium" style={{ opacity: 0.7 }}>IN PROGRESS</div>
+          <div className="headline-large" style={{ marginTop: 6 }}>DAY {activeSessDay.dayNumber}</div>
+          <div className="title-medium" style={{ opacity: 0.85 }}>{activeSessDay.name}</div>
+          <div className="body-small" style={{ opacity: 0.8, marginTop: 8 }}>
+            {activeSessSets} set{activeSessSets === 1 ? '' : 's'} logged{activeSessStarted ? ` · started ${formatElapsed(activeSessStarted, nowTick)} ago` : ''}
+          </div>
+          <div className="row gap-8 mt-16">
+            <button
+              className="big-cta grow"
+              style={{ background: 'var(--on-accent)', color: 'var(--accent-primary)', minHeight: 52 }}
+              onClick={() => navigate(`/workout/${activeSess.workoutDayId}`)}
+            >
+              Resume workout <ArrowRight size={20} />
+            </button>
+            <button
+              className="icon-btn"
+              style={{ background: 'var(--on-accent)', color: 'var(--accent-primary)', border: 'none', width: 52, height: 52 }}
+              aria-label="Day overview"
+              onClick={() => navigate(`/day/${activeSessDay.id}`)}
+            >
+              <List size={20} />
+            </button>
+          </div>
+        </div>
+      ) : upNext ? (
         <div className="card" style={{ position: 'relative', overflow: 'hidden', background: 'var(--accent-primary)', color: 'var(--on-accent)', borderColor: 'var(--accent-primary)' }}>
           <div className="watermark" style={{ color: 'var(--on-accent)' }}>D{upNext.dayNumber}</div>
           <div className="label-medium" style={{ opacity: 0.7 }}>UP NEXT</div>
           <div className="headline-large" style={{ marginTop: 6 }}>DAY {upNext.dayNumber}</div>
           <div className="title-medium" style={{ opacity: 0.85 }}>{upNext.name}</div>
           <div className="body-small" style={{ opacity: 0.8, marginTop: 8 }}>
-            {upNextExs.length} exercises · ~{upNextExs.length * 11} min · {upNextSets} sets
+            {upNextExs.length} exercises · ~{estimateDurationMin(upNextSets, state.prefs.restSeconds)} min · {upNextSets} sets
           </div>
           <div className="row gap-8 mt-16">
             <button
               className="big-cta grow"
               style={{ background: 'var(--on-accent)', color: 'var(--accent-primary)', minHeight: 52 }}
-              onClick={() => navigate(`/workout/${upNext.id}`)}
+              onClick={() => navigate(upNextExs.length === 0 ? `/day/${upNext.id}` : `/workout/${upNext.id}`)}
             >
-              Start workout <ArrowRight size={20} />
+              {upNextExs.length === 0 ? 'Add exercises' : 'Start workout'} <ArrowRight size={20} />
             </button>
             <button
               className="icon-btn"
@@ -172,7 +222,7 @@ export function HomeScreen() {
               aria-label="Day overview"
               onClick={() => navigate(`/day/${upNext.id}`)}
             >
-              <Swap size={20} />
+              <List size={20} />
             </button>
           </div>
         </div>
@@ -192,7 +242,9 @@ export function HomeScreen() {
       {/* Calendar */}
       <CalendarCard completedMap={completedMap} activityMap={activityMap} today={today} sessionCount={sessionCount}
         canLogToday={!loggedToday && !todayIsRest && !!upNext}
-        onToday={() => upNext && navigate(`/day/${upNext.id}`)} />
+        onToday={() => upNext && navigate(`/day/${upNext.id}`)}
+        sessionsByDay={sessionsByDay}
+        onDaySessions={(ed, label) => setDaySheet({ ed, label })} />
 
       {/* This week */}
       {split && days.length > 0 && (
@@ -250,20 +302,10 @@ export function HomeScreen() {
         </div>
       )}
 
-      {showReset && (
-        <Dialog onClose={() => setShowReset(false)}>
-          <div className="headline-small mb-8">RESET ROUTINE?</div>
-          <p className="body-medium muted">Picking a new split will reset your current routine. Any customizations to it will be lost.</p>
-          <div className="row gap-8 mt-20">
-            <GhostCta onClick={() => setShowReset(false)}>Cancel</GhostCta>
-            <BigCta style={{ minHeight: 52 }} onClick={() => { setShowReset(false); navigate('/pick-split'); }}>Reset</BigCta>
-          </div>
-        </Dialog>
-      )}
-
       {showActivity && (
         <LogActivityDialog
           hasNextDay={!!upNext}
+          nextDayLabel={upNext ? `Day ${upNext.dayNumber} · ${upNext.name}` : null}
           onClose={() => setShowActivity(false)}
           onSave={(a) => {
             logActivity({
@@ -277,6 +319,8 @@ export function HomeScreen() {
           }}
         />
       )}
+
+      {daySheet && <DaySessionsSheet ed={daySheet.ed} label={daySheet.label} onClose={() => setDaySheet(null)} />}
     </div>
   );
 }
@@ -288,6 +332,8 @@ function CalendarCard({
   sessionCount,
   canLogToday,
   onToday,
+  sessionsByDay,
+  onDaySessions,
 }: {
   completedMap: Map<number, number>;
   activityMap: Map<number, string>;
@@ -295,6 +341,8 @@ function CalendarCard({
   sessionCount: number;
   canLogToday: boolean;
   onToday: () => void;
+  sessionsByDay: Map<number, Session[]>;
+  onDaySessions: (ed: number, label: string) => void;
 }) {
   const now = new Date();
   const year = now.getFullYear();
@@ -311,7 +359,7 @@ function CalendarCard({
     <div className="card">
       <div className="row-between mb-12">
         <span className="title-medium">{MONTH_NAMES[month]} {year}</span>
-        <span className="body-small muted">{sessionCount} sessions</span>
+        <span className="body-small muted">{sessionCount} session{sessionCount === 1 ? '' : 's'}</span>
       </div>
       <div className="cal-grid">
         {cells.map((d, i) => {
@@ -321,15 +369,27 @@ function CalendarCard({
           const activity = activityMap.get(ed);
           const done = workoutNum != null || activity != null;
           const isToday = ed === today;
-          const tag = workoutNum != null ? `D${workoutNum}` : activity ? activity.slice(0, 3).toUpperCase() : '';
-          const clickable = isToday && canLogToday;
+          const daySessions = sessionsByDay.get(ed);
+          const tag =
+            workoutNum != null
+              ? activity != null
+                ? `D${workoutNum}+`
+                : `D${workoutNum}`
+              : activity
+              ? activity.slice(0, 3).toUpperCase()
+              : '';
+          const hasSessions = !!daySessions && daySessions.length > 0;
+          const clickable = hasSessions || (isToday && canLogToday);
           return (
             <button
               key={i}
               className={`cal-cell ${done ? 'done' : ''} ${isToday && !done ? 'today' : ''}`}
               disabled={!clickable}
               style={{ cursor: clickable ? 'pointer' : 'default' }}
-              onClick={onToday}
+              onClick={() => {
+                if (hasSessions) onDaySessions(ed, `${MONTH_NAMES[month]} ${d}`);
+                else onToday();
+              }}
             >
               <span>{d}</span>
               {tag && <span className="tag">{tag}</span>}
@@ -337,9 +397,27 @@ function CalendarCard({
           );
         })}
       </div>
-      <div className="row gap-16 mt-12">
+      <div className="row gap-16 mt-12 wrap">
         <span className="row gap-6 body-small muted"><span style={{ width: 10, height: 10, borderRadius: 999, background: 'var(--accent-primary)' }} /> Completed</span>
         <span className="row gap-6 body-small muted"><span style={{ width: 10, height: 10, borderRadius: 999, border: '2px solid var(--accent-primary)' }} /> Today</span>
+        <span className="row gap-6 body-small muted">
+          <span
+            className="tag"
+            style={{
+              position: 'static',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '2px 5px',
+              borderRadius: 4,
+              background: 'var(--accent-primary)',
+              color: 'var(--on-accent)',
+            }}
+          >
+            RUN
+          </span>
+          Activity
+        </span>
       </div>
     </div>
   );
@@ -347,10 +425,12 @@ function CalendarCard({
 
 function LogActivityDialog({
   hasNextDay,
+  nextDayLabel,
   onClose,
   onSave,
 }: {
   hasNextDay: boolean;
+  nextDayLabel: string | null;
   onClose: () => void;
   onSave: (a: { activityType: string; durationMin: number | null; notes: string | null; countAsToday: boolean }) => void;
 }) {
@@ -377,10 +457,15 @@ function LogActivityDialog({
       />
       <textarea className="field mb-12" placeholder="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
       {hasNextDay && (
-        <button className="row-between mb-16" style={{ width: '100%', background: 'none', border: 'none', color: 'var(--fg)' }} onClick={() => setCountAsToday((v) => !v)}>
-          <span className="label-medium">COUNT AS TODAY'S WORKOUT</span>
-          <span className={`switch ${countAsToday ? 'on' : ''}`}><span /></span>
-        </button>
+        <>
+          <button className="row-between mb-16" style={{ width: '100%', background: 'none', border: 'none', color: 'var(--fg)' }} onClick={() => setCountAsToday((v) => !v)}>
+            <span className="label-medium">COUNT AS TODAY'S WORKOUT</span>
+            <span className={`switch ${countAsToday ? 'on' : ''}`}><span /></span>
+          </button>
+          {nextDayLabel && (
+            <p className="body-small muted" style={{ margin: '-8px 0 16px' }}>Marks {nextDayLabel} as done in your rotation.</p>
+          )}
+        </>
       )}
       <div className="row gap-8">
         <GhostCta onClick={onClose}>Cancel</GhostCta>
@@ -398,5 +483,70 @@ function LogActivityDialog({
         </BigCta>
       </div>
     </Dialog>
+  );
+}
+
+function DaySessionsSheet({
+  ed,
+  label,
+  onClose,
+}: {
+  ed: number;
+  label: string;
+  onClose: () => void;
+}) {
+  const navigate = useNavigate();
+  const state = useStore();
+  const unit = state.prefs.units;
+  const sessions = sessionsByEpochDay(state).get(ed) ?? [];
+
+  return (
+    <Sheet onClose={onClose}>
+      <div className="headline-small mb-16">{label}</div>
+      <div className="stack gap-8">
+        {sessions.length === 0 && <div className="body-small muted">Nothing logged.</div>}
+        {sessions.map((s: Session) => {
+          const time = s.completedAt != null
+            ? new Date(s.completedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            : '';
+
+          if (s.notes === REST_SESSION_NOTE) {
+            const wd = s.workoutDayId ? state.workoutDays[s.workoutDayId] : null;
+            return (
+              <div key={s.id} className="card" style={{ padding: 14 }}>
+                <div className="stack">
+                  <span className="title-small">Rest day</span>
+                  {wd && <span className="body-small muted">{wd.name}</span>}
+                </div>
+              </div>
+            );
+          }
+
+          if (s.workoutDayId != null) {
+            const wd = state.workoutDays[s.workoutDayId];
+            const logs = sessionLogs(state, s.id);
+            const vol = Math.round(kgToDisplay(totalVolumeKg(logs), unit));
+            return (
+              <button key={s.id} className="card row-between" style={{ padding: 14, color: 'var(--fg)', textAlign: 'left' }} onClick={() => { onClose(); navigate(`/complete/${s.id}`); }}>
+                <div className="stack">
+                  <span className="title-small">{wd?.name ?? 'Workout'}</span>
+                  <span className="body-small muted">{logs.length} sets · {vol} {unit} · {time}</span>
+                </div>
+                <ChevronRight size={18} className="muted" />
+              </button>
+            );
+          }
+
+          return (
+            <div key={s.id} className="card" style={{ padding: 14 }}>
+              <div className="stack">
+                <span className="title-small">{s.activityType ?? 'Activity'}</span>
+                <span className="body-small muted">{s.durationMin ? `${s.durationMin} min · ` : ''}{time}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Sheet>
   );
 }

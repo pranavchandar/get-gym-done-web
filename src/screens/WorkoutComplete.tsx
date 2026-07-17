@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useStore } from '../store/store';
 import { sessionLogs } from '../store/selectors';
 import { totalVolumeKg, countPRs } from '../domain/metrics';
-import { displayToKg } from '../domain/units';
+import { displayToKg, kgToDisplay } from '../domain/units';
 import { epochDayLocal } from '../domain/dates';
 import { BigCta } from '../components/ui';
 import { Check, ArrowRight } from '../components/icons';
@@ -23,8 +23,8 @@ export function WorkoutCompleteScreen() {
   const exerciseIds = [...new Set(logs.map((l) => l.exerciseId))];
   const setCount = logs.length;
 
-  const { prCount, volLabel } = useMemo(() => {
-    if (!session || session.completedAt == null) return { prCount: 0, volLabel: '—' };
+  const { prCount, volLabel, volSub } = useMemo(() => {
+    if (!session || session.completedAt == null) return { prCount: 0, volLabel: '—', volSub: 'Vol' };
     const completedAt = session.completedAt;
     // prior max weight per exercise across earlier completed sessions
     const priorMax = new Map<string, number>();
@@ -38,6 +38,7 @@ export function WorkoutCompleteScreen() {
     const prCount = countPRs(logs, priorMax);
 
     let volLabel = '—';
+    let volSub = 'Vol';
     if (session.workoutDayId) {
       const thisVol = totalVolumeKg(logs);
       let prior: { at: number; vol: number } | null = null;
@@ -48,14 +49,17 @@ export function WorkoutCompleteScreen() {
         const v = totalVolumeKg(sessionLogs(state, other.id));
         if (!prior || other.completedAt > prior.at) prior = { at: other.completedAt, vol: v };
       }
-      if (!prior || prior.vol === 0) volLabel = 'NEW';
-      else {
+      if (!prior || prior.vol === 0) {
+        volLabel = `${Math.round(kgToDisplay(thisVol, unit))} ${unit}`;
+        volSub = 'Vol · first time';
+      } else {
         const pct = ((thisVol - prior.vol) / prior.vol) * 100;
         volLabel = `${pct >= 0 ? '+' : ''}${Math.round(pct)}%`;
+        volSub = 'Vol';
       }
     }
-    return { prCount, volLabel };
-  }, [state, session, sessionId, logs]);
+    return { prCount, volLabel, volSub };
+  }, [state, session, sessionId, logs, unit]);
 
   const today = epochDayLocal(Date.now());
   const todayRow = Object.values(state.bodyMetrics).find((r) => epochDayLocal(r.recordedAt) === today);
@@ -69,7 +73,7 @@ export function WorkoutCompleteScreen() {
   }
 
   const backHome = () => {
-    armConfetti();
+    if (session?.completedAt != null && Date.now() - session.completedAt < 5 * 60_000) armConfetti();
     navigate('/home');
   };
 
@@ -84,17 +88,17 @@ export function WorkoutCompleteScreen() {
           {day?.name ?? 'WORKOUT'}<br /><span className="accent">LOCKED IN.</span>
         </h1>
         <p className="body-medium muted" style={{ margin: 0 }}>
-          {exerciseIds.length} exercises · {setCount} sets · logged.
+          {exerciseIds.length} exercise{exerciseIds.length === 1 ? '' : 's'} · {setCount} set{setCount === 1 ? '' : 's'} logged.
         </p>
 
         <div className="row gap-8" style={{ width: '100%' }}>
           <div className="stat-pill">
             <div className="big">{prCount}</div>
-            <div className="label-small muted" style={{ marginTop: 4 }}>PRs</div>
+            <div className="label-small muted" style={{ marginTop: 4 }}>{prCount === 1 ? 'PR' : 'PRs'}</div>
           </div>
           <div className="stat-pill">
             <div className="big">{volLabel}</div>
-            <div className="label-small muted" style={{ marginTop: 4 }}>Vol</div>
+            <div className="label-small muted" style={{ marginTop: 4 }}>{volSub}</div>
           </div>
         </div>
 

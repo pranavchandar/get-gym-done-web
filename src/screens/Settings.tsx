@@ -3,9 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/store';
 import { ACCENT_PALETTES } from '../theme/palettes';
 import type { ThemeChoice, Units } from '../types';
+import { REST_MIN, REST_MAX, REST_STEP } from '../types';
 import { downloadBackup, parseBackup, applyBackup } from '../backup/backup';
 import { getToken, setToken, getGistId, getLastSync, pushToGist, pullFromGist, clearGistConfig } from '../sync/gist';
-import { BigCta, GhostCta, Dialog } from '../components/ui';
+import { BigCta, GhostCta, Dialog, Stepper } from '../components/ui';
 import { Check } from '../components/icons';
 import { toast } from '../components/toast';
 
@@ -14,11 +15,13 @@ export function SettingsScreen() {
   const prefs = useStore((s) => s.prefs);
   const setTheme = useStore((s) => s.setTheme);
   const setUnits = useStore((s) => s.setUnits);
+  const setRestSeconds = useStore((s) => s.setRestSeconds);
   const setAccent = useStore((s) => s.setAccent);
 
   const fileRef = useRef<HTMLInputElement>(null);
   const [importData, setImportData] = useState<ReturnType<typeof parseBackup> | null>(null);
   const [pullConfirm, setPullConfirm] = useState<string | null>(null);
+  const [resetConfirm, setResetConfirm] = useState(false);
 
   return (
     <div className="pad stack gap-24" style={{ paddingBottom: 40 }}>
@@ -59,11 +62,13 @@ export function SettingsScreen() {
             <button key={u} className={prefs.units === u ? 'active' : ''} onClick={() => setUnits(u)}>{u}</button>
           ))}
         </div>
+        <div className="label-medium muted mb-8" style={{ marginTop: 16 }}>Default rest between sets</div>
+        <Stepper value={prefs.restSeconds} step={REST_STEP} min={REST_MIN} max={REST_MAX} onChange={setRestSeconds} format={(v) => `${v}s`} />
       </Section>
 
       {/* Routine */}
       <Section title="Routine">
-        <GhostCta onClick={() => navigate('/pick-split')}>Reset routine</GhostCta>
+        <GhostCta onClick={() => setResetConfirm(true)}>Reset routine</GhostCta>
       </Section>
 
       {/* Cloud Sync */}
@@ -87,8 +92,8 @@ export function SettingsScreen() {
               try {
                 const text = await file.text();
                 setImportData(parseBackup(text));
-              } catch {
-                toast('Could not read that file.');
+              } catch (err) {
+                toast(err instanceof Error ? err.message : 'Could not read that file.');
               }
               e.target.value = '';
             }}
@@ -117,9 +122,20 @@ export function SettingsScreen() {
             <GhostCta onClick={() => setPullConfirm(null)}>Cancel</GhostCta>
             <BigCta style={{ minHeight: 52 }} onClick={() => {
               try { applyBackup(parseBackup(pullConfirm)); toast('Pulled from cloud'); }
-              catch { toast('Cloud data was invalid.'); }
+              catch (err) { toast(err instanceof Error ? err.message : 'Cloud data was invalid.'); }
               setPullConfirm(null);
             }}>Replace</BigCta>
+          </div>
+        </Dialog>
+      )}
+
+      {resetConfirm && (
+        <Dialog onClose={() => setResetConfirm(false)}>
+          <div className="headline-small mb-8">RESET ROUTINE?</div>
+          <p className="body-medium muted">Picking a new split will reset your current routine. Any customizations to it will be lost.</p>
+          <div className="row gap-8 mt-20">
+            <GhostCta onClick={() => setResetConfirm(false)}>Cancel</GhostCta>
+            <BigCta style={{ minHeight: 52 }} onClick={() => { setResetConfirm(false); navigate('/pick-split'); }}>Reset</BigCta>
           </div>
         </Dialog>
       )}
@@ -203,8 +219,11 @@ function CloudSync({ onPullRequest }: { onPullRequest: (text: string) => void })
       {status && <div className="row gap-6 body-small accent"><Check size={14} /> {status}</div>}
       {error && <div className="body-small" style={{ color: 'var(--coral)' }}>{error}</div>}
       <div className="body-small muted">
-        {gistId ? 'Gist connected. ' : 'No gist yet — push to create one. '}
-        {lastSync ? `Last sync ${new Date(lastSync).toLocaleString()}.` : 'Never synced.'}
+        {gistId
+          ? lastSync
+            ? `Gist connected · last sync ${new Date(lastSync).toLocaleString()}.`
+            : 'Gist connected.'
+          : 'No gist yet — push to create one.'}
       </div>
     </div>
   );

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 
 type Listener = (msg: string) => void;
 const listeners = new Set<Listener>();
@@ -15,11 +16,12 @@ interface ActiveToast {
 export function Toaster() {
   const [items, setItems] = useState<ActiveToast[]>([]);
   const counter = useRef(0);
+  const { pathname } = useLocation();
 
   useEffect(() => {
     const listener: Listener = (message) => {
       const id = ++counter.current;
-      setItems((prev) => [...prev, { id, message }]);
+      setItems([{ id, message }]);
       window.setTimeout(() => {
         setItems((prev) => prev.filter((t) => t.id !== id));
       }, 2600);
@@ -29,6 +31,10 @@ export function Toaster() {
       listeners.delete(listener);
     };
   }, []);
+
+  useEffect(() => {
+    setItems([]);
+  }, [pathname]);
 
   if (!items.length) return null;
   return (

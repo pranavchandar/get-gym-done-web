@@ -1,8 +1,9 @@
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/store';
 import { resolveTheme } from '../theme/apply';
-import { StripedPlaceholder, BigCta } from '../components/ui';
+import { BigCta } from '../components/ui';
 import { ArrowRight } from '../components/icons';
+import { MuscleMap } from '../components/MuscleMap';
 
 export function SplashScreen() {
   const navigate = useNavigate();
@@ -12,7 +13,7 @@ export function SplashScreen() {
 
   return (
     <div className="ob screen" style={{ minHeight: '100%' }}>
-      <div className="screen-scroll pad" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: '100vh' }}>
+      <div className="screen-scroll pad" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: '100%' }}>
         <div>
           <div className="row-between">
             <span className="label-medium accent">V1.0 — BETA</span>
@@ -21,7 +22,7 @@ export function SplashScreen() {
               style={{ background: 'none', border: 'none', color: 'var(--fg2)' }}
               onClick={() => setTheme(isDark ? 'light' : 'dark')}
             >
-              <span className="label-small">{isDark ? 'DARK' : 'LIGHT'}</span>
+              <span className="label-small">DARK MODE</span>
               <span className={`switch ${isDark ? 'on' : ''}`}>
                 <span />
               </span>
@@ -39,7 +40,20 @@ export function SplashScreen() {
         </div>
 
         <div className="mt-32">
-          <StripedPlaceholder label="hero — athlete" style={{ height: 180, marginBottom: 24 }} />
+          <div
+            style={{
+              background: 'var(--surface)',
+              border: '1px solid var(--line)',
+              borderRadius: 16,
+              height: 180,
+              marginBottom: 24,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <MuscleMap muscles={['chest', 'shoulders', 'quads']} size={84} />
+          </div>
           <BigCta onClick={() => navigate('/pick-split')}>
             Get started <ArrowRight size={22} />
           </BigCta>

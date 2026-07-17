@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useStore } from '../store/store';
 import { daysOf, dayExercisesOf } from '../store/selectors';
-import { TopBar, BigCta, GhostCta, SegTabs, Sheet, StripedPlaceholder, PillChip, Stepper } from '../components/ui';
+import { estimateDurationMin } from '../domain/metrics';
+import { TopBar, BigCta, GhostCta, SegTabs, Sheet, InitialTile, PillChip, Stepper } from '../components/ui';
 import { Swap, Edit, Bed, Check, ArrowRight, ChevronUp, ChevronDown, Trash, Plus } from '../components/icons';
 import { ExercisePicker } from '../components/ExercisePicker';
 
@@ -28,7 +29,9 @@ export function DayOverviewScreen() {
     );
   }
 
-  const focus = day.muscleGroups[0] ?? day.name;
+  const totalSets = exs.reduce((a, e) => a + e.prescribedSets, 0);
+  const primaries = [...new Set(exs.map((de) => state.exercises[de.exerciseId]?.primaryMuscle).filter((m): m is string => !!m))];
+  const focus = primaries.length ? primaries.slice(0, 2).join(' & ') : (day.muscleGroups[0] ?? day.name);
 
   return (
     <div className="screen">
@@ -37,10 +40,10 @@ export function DayOverviewScreen() {
         right={
           <div className="row gap-8">
             {total > 1 && (
-              <button className="icon-btn" aria-label="Switch day" onClick={() => setSwitching(true)}><Swap size={18} /></button>
+              <button className="chip" onClick={() => setSwitching(true)}><Swap size={14} /> Switch</button>
             )}
             {!day.isRestDay && (
-              <button className="icon-btn" aria-label="Edit exercises" onClick={() => setEditing(true)}><Edit size={18} /></button>
+              <button className="chip" onClick={() => setEditing(true)}><Edit size={14} /> Edit</button>
             )}
           </div>
         }
@@ -48,7 +51,7 @@ export function DayOverviewScreen() {
 
       <div className="screen-scroll pad">
         {day.isRestDay ? (
-          <div className="center stack gap-16" style={{ paddingTop: 48 }}>
+          <div className="center stack gap-16" style={{ paddingTop: 48, alignItems: 'center' }}>
             <div className="label-medium muted">DAY {day.dayNumber} OF {total}</div>
             <Bed size={64} className="accent" />
             <h1 className="display-medium" style={{ margin: 0 }}>REST DAY</h1>
@@ -62,7 +65,7 @@ export function DayOverviewScreen() {
             <h1 className="display-small" style={{ margin: '6px 0 12px' }}>{day.name}</h1>
             <div className="row gap-8 mb-16">
               <PillChip label={`${exs.length} exercises`} variant="surface" />
-              <PillChip label={`~${exs.length * 11} min`} variant="surface" />
+              <PillChip label={`~${estimateDurationMin(totalSets, state.prefs.restSeconds)} min`} variant="surface" />
             </div>
 
             <SegTabs
@@ -78,7 +81,7 @@ export function DayOverviewScreen() {
                   return (
                     <div key={de.id} className="card row gap-12">
                       <span className="display-small" style={{ color: 'var(--fg3)', width: 28 }}>{i + 1}</span>
-                      <StripedPlaceholder label="gif" style={{ width: 56, height: 56, flex: '0 0 auto' }} />
+                      <InitialTile name={ex?.name ?? '?'} />
                       <div className="stack grow">
                         <span className="title-small">{ex?.name ?? 'Exercise'}</span>
                         <span className="body-small muted">{ex?.primaryMuscle ?? ''}</span>
@@ -111,9 +114,15 @@ export function DayOverviewScreen() {
 
       {!day.isRestDay && (
         <div className="pad">
-          <BigCta onClick={() => navigate(`/workout/${day.id}`)}>
-            {tab === 'warmup' ? 'Start warmup' : 'Start workout'} <ArrowRight size={22} />
-          </BigCta>
+          {exs.length === 0 ? (
+            <BigCta onClick={() => setEditing(true)}>
+              Add exercises <ArrowRight size={22} />
+            </BigCta>
+          ) : (
+            <BigCta onClick={() => navigate(`/workout/${day.id}`)}>
+              Start workout <ArrowRight size={22} />
+            </BigCta>
+          )}
         </div>
       )}
 

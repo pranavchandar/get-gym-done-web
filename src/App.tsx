@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { HashRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { useStore } from './store/store';
 import { applyTheme } from './theme/apply';
@@ -36,6 +36,10 @@ type Tab = 'today' | 'workouts' | 'profile' | 'settings';
 
 function MainShell() {
   const [tab, setTab] = useState<Tab>('today');
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    scrollRef.current?.scrollTo(0, 0);
+  }, [tab]);
   const tabs: { key: Tab; label: string; icon: JSX.Element }[] = [
     { key: 'today', label: 'Today', icon: <HomeIcon size={24} /> },
     { key: 'workouts', label: 'Workouts', icon: <Dumbbell size={24} /> },
@@ -44,7 +48,7 @@ function MainShell() {
   ];
   return (
     <div className="screen">
-      <div className="screen-scroll">
+      <div className="screen-scroll" ref={scrollRef}>
         <div className="crossfade" key={tab}>
           {tab === 'today' && <HomeScreen />}
           {tab === 'workouts' && <WorkoutsListScreen />}
@@ -85,7 +89,7 @@ export function App() {
   }, [ensureSeeded]);
 
   return (
-    <HashRouter>
+    <HashRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <ThemeManager />
       <div className="app-frame">
         <Routes>

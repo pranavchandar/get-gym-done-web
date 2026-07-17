@@ -66,6 +66,7 @@ export interface StoreActions {
   // prefs
   setTheme: (t: ThemeChoice) => void;
   setUnits: (u: Units) => void;
+  setRestSeconds: (seconds: number) => void;
   setAccent: (a: string) => void;
   setProfile: (p: { handle?: string | null; color?: string | null; avatarPhoto?: string | null }) => void;
   // splits / onboarding
@@ -194,6 +195,10 @@ export const useStore = create<Store>()(
 
       setTheme: (t) => set((s) => ({ prefs: { ...s.prefs, theme: t } })),
       setUnits: (u) => set((s) => ({ prefs: { ...s.prefs, units: u } })),
+      setRestSeconds: (seconds) => {
+        const v = Math.max(REST_MIN, Math.min(REST_MAX, Math.round(seconds)));
+        set((s) => ({ prefs: { ...s.prefs, restSeconds: v } }));
+      },
       setAccent: (a) => set((s) => ({ prefs: { ...s.prefs, accent: a } })),
       setProfile: (p) => set((s) => ({ prefs: { ...s.prefs, ...p } })),
 
@@ -216,18 +221,20 @@ export const useStore = create<Store>()(
             muscleGroups: [],
             isRestDay: d.isRestDay,
           };
-          d.exercises.forEach((ex, oi) => {
-            const id = uid();
-            dayExercises[id] = {
-              id,
-              workoutDayId: dayId,
-              exerciseId: ex.exerciseId,
-              orderIndex: oi,
-              prescribedSets: ex.sets,
-              prescribedRepsLow: ex.repsLow,
-              prescribedRepsHigh: ex.repsHigh,
-            };
-          });
+          if (!d.isRestDay) {
+            d.exercises.forEach((ex, oi) => {
+              const id = uid();
+              dayExercises[id] = {
+                id,
+                workoutDayId: dayId,
+                exerciseId: ex.exerciseId,
+                orderIndex: oi,
+                prescribedSets: ex.sets,
+                prescribedRepsLow: ex.repsLow,
+                prescribedRepsHigh: ex.repsHigh,
+              };
+            });
+          }
         });
         const split: Split = { id: splitId, name: draft.name.trim() || 'My Routine', dayCount: draft.days.length, isCustom: true };
         set((s) => ({
@@ -406,6 +413,7 @@ export const useStore = create<Store>()(
           workoutDayId,
           exerciseIds,
           addedExerciseIds: added,
+          replacedExerciseIds: [],
           currentIndex: startIndex,
           restEndAt: null,
           restDuration: null,
@@ -482,11 +490,19 @@ export const useStore = create<Store>()(
         for (const l of setLogsOfSession(s, s.activeSession.sessionId)) {
           if (l.exerciseId === oldExerciseId) delete setLogsNext[l.id];
         }
+        const wasAdded = s.activeSession.addedExerciseIds.includes(oldExerciseId);
         const added = s.activeSession.addedExerciseIds.filter((id) => id !== oldExerciseId);
-        added.push(newExerciseId);
+        const replaced = (s.activeSession.replacedExerciseIds ?? []).filter((id) => id !== oldExerciseId);
+        if (wasAdded) added.push(newExerciseId);
+        else replaced.push(newExerciseId);
         set({
           setLogs: setLogsNext,
-          activeSession: { ...s.activeSession, exerciseIds, addedExerciseIds: added },
+          activeSession: {
+            ...s.activeSession,
+            exerciseIds,
+            addedExerciseIds: added,
+            replacedExerciseIds: replaced,
+          },
         });
       },
 
@@ -508,6 +524,7 @@ export const useStore = create<Store>()(
             ...s.activeSession,
             exerciseIds,
             addedExerciseIds: s.activeSession.addedExerciseIds.filter((id) => id !== exerciseId),
+            replacedExerciseIds: (s.activeSession.replacedExerciseIds ?? []).filter((id) => id !== exerciseId),
             currentIndex,
           },
         });
@@ -536,7 +553,6 @@ export const useStore = create<Store>()(
           const newDur = Math.max(REST_MIN, Math.min(REST_MAX, curDur + delta));
           const applied = newDur - curDur;
           return {
-            prefs: { ...s.prefs, restSeconds: newDur },
             activeSession: {
               ...s.activeSession,
               restEndAt: s.activeSession.restEndAt + applied * 1000,

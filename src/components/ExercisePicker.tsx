@@ -111,8 +111,8 @@ function CustomExerciseForm({
   const muscles = useMemo(() => seedMuscles(), []);
   const equipment = useMemo(() => seedEquipment(), []);
   const [name, setName] = useState('');
-  const [muscle, setMuscle] = useState(muscles[0] ?? 'Chest');
-  const [equip, setEquip] = useState(equipment[0] ?? 'Barbell');
+  const [muscle, setMuscle] = useState('');
+  const [equip, setEquip] = useState('');
   const [sets, setSets] = useState(3);
   const [low, setLow] = useState(8);
   const [high, setHigh] = useState(12);
@@ -124,12 +124,14 @@ function CustomExerciseForm({
         <input className="field" placeholder="Exercise name" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
         <label className="label-medium muted">Primary muscle</label>
         <select className="field" value={muscle} onChange={(e) => setMuscle(e.target.value)}>
+          <option value="" disabled>Select muscle…</option>
           {muscles.map((m) => (
             <option key={m} value={m}>{m}</option>
           ))}
         </select>
         <label className="label-medium muted">Equipment</label>
         <select className="field" value={equip} onChange={(e) => setEquip(e.target.value)}>
+          <option value="" disabled>Select equipment…</option>
           {equipment.map((m) => (
             <option key={m} value={m}>{m}</option>
           ))}
@@ -149,7 +151,7 @@ function CustomExerciseForm({
       </div>
       <div className="stack gap-8 mt-20">
         <BigCta
-          disabled={!name.trim()}
+          disabled={!name.trim() || !muscle || !equip}
           onClick={() =>
             onCreate({
               name: name.trim(),

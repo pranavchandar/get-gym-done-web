@@ -127,3 +127,16 @@ export function activityByEpochDay(s: StoreData): Map<number, string> {
   }
   return map;
 }
+
+/** epoch-day -> completed sessions of that local day, sorted by completedAt. */
+export function sessionsByEpochDay(s: StoreData): Map<number, Session[]> {
+  const map = new Map<number, Session[]>();
+  for (const se of Object.values(s.sessions)) {
+    if (se.completedAt == null) continue;
+    const ed = epochDayLocal(se.completedAt);
+    const arr = map.get(ed);
+    if (arr) arr.push(se); else map.set(ed, [se]);
+  }
+  for (const arr of map.values()) arr.sort((a, b) => (a.completedAt ?? 0) - (b.completedAt ?? 0));
+  return map;
+}

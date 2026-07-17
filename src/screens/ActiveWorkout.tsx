@@ -3,15 +3,16 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useStore } from '../store/store';
 import { dayExercisesOf, sessionLogs, completedHistoryForExercise, lastCompletedLogsForExercise } from '../store/selectors';
 import { weightIncreaseSuggestion } from '../domain/progression';
-import { kgToDisplay, displayToKg, displayStep, incrementKgFor, formatWeight } from '../domain/units';
-import { DEFAULT_START_WEIGHT_KG } from '../types';
-import { BigCta, Stepper, StripedPlaceholder, PillChip, Sheet } from '../components/ui';
-import { X, More, Check, MinusCircle, Plus, ArrowRight } from '../components/icons';
+import { kgToDisplay, displayToKg, displayStep, incrementKgFor, formatWeight, roundDisplay, defaultStartDisplayWeight } from '../domain/units';
+import { BigCta, GhostCta, Stepper, PillChip, Sheet, Dialog } from '../components/ui';
+import { X, More, Check, MinusCircle, Plus, ArrowRight, ChevronUp } from '../components/icons';
 import { MuscleMap } from '../components/MuscleMap';
 import { Keypad } from '../components/Keypad';
 import { ExercisePicker } from '../components/ExercisePicker';
 import { toast } from '../components/toast';
 import { autoPush } from '../sync/gist';
+
+const NOTIF_PROMPT_DISMISSED_KEY = 'get-gym-done:notif-prompt-dismissed';
 
 export function ActiveWorkoutScreen() {
   const navigate = useNavigate();
@@ -44,14 +45,6 @@ export function ActiveWorkoutScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dayId, isRest, emptyDay]);
 
-  // lazily request notification permission
-  useEffect(() => {
-    if (isRest || emptyDay) return;
-    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
-      Notification.requestPermission().catch(() => {});
-    }
-  }, [isRest, emptyDay]);
-
   // ephemeral per-exercise UI state
   const [extra, setExtra] = useState<Record<string, number>>({});
   const [removed, setRemoved] = useState<Record<string, number>>({});
@@ -59,6 +52,8 @@ export function ActiveWorkoutScreen() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [picker, setPicker] = useState<null | 'add' | 'replace'>(null);
   const [keypad, setKeypad] = useState<null | 'weight' | 'reps'>(null);
+  const [confirmFinish, setConfirmFinish] = useState(false);
+  const [restCollapsed, setRestCollapsed] = useState(false);
 
   const active = state.activeSession;
 
@@ -105,7 +100,19 @@ export function ActiveWorkoutScreen() {
   const totalSets = exerciseIds.reduce((a, id) => a + infoFor(id).setCount, 0);
   const doneSets = exerciseIds.reduce((a, id) => a + infoFor(id).doneCount, 0);
 
+  const unfinished = exerciseIds
+    .map((id) => ({ id, info: infoFor(id), name: state.exercises[id]?.name ?? 'Exercise' }))
+    .filter((x) => x.info.activeSetNumber !== null);
+
   const back = () => navigate('/home');
+
+  const doFinish = () => {
+    const sid = finishWorkout();
+    if (sid) {
+      autoPush();
+      navigate(`/complete/${sid}`);
+    }
+  };
 
   return (
     <div className="screen">
@@ -137,6 +144,7 @@ export function ActiveWorkoutScreen() {
           exId={currentExId}
           exerciseNumber={currentIndex + 1}
           isAdded={active.addedExerciseIds.includes(currentExId)}
+          isReplaced={(active.replacedExerciseIds ?? []).includes(currentExId)}
           unit={unit}
           info={infoFor(currentExId)}
           overrides={overrides[currentExId] ?? {}}
@@ -178,11 +186,8 @@ export function ActiveWorkoutScreen() {
           setCurrentIndex(Math.min(currentIndex + 1, total - 1));
         }}
         onFinish={() => {
-          const sid = finishWorkout();
-          if (sid) {
-            autoPush();
-            navigate(`/complete/${sid}`);
-          }
+          if (unfinished.length > 0) setConfirmFinish(true);
+          else doFinish();
         }}
       />
 
@@ -194,7 +199,26 @@ export function ActiveWorkoutScreen() {
           onAdjust={adjustRestTimer}
           onSkip={clearRestTimer}
           onDone={clearRestTimer}
+          collapsed={restCollapsed}
+          onToggleCollapsed={() => setRestCollapsed((c) => !c)}
         />
+      )}
+
+      {/* confirm finish with unfinished exercises */}
+      {confirmFinish && (
+        <Dialog onClose={() => setConfirmFinish(false)}>
+          <div className="headline-small mb-8">Finish with unfinished sets?</div>
+          <p className="body-medium muted" style={{ margin: 0 }}>These exercises still have unlogged sets:</p>
+          <div className="stack gap-4" style={{ margin: '12px 0 0' }}>
+            {unfinished.map((x) => (
+              <div key={x.id} className="body-medium">{x.name} <span className="muted">· {x.info.doneCount}/{x.info.setCount} sets</span></div>
+            ))}
+          </div>
+          <div className="row gap-8 mt-20">
+            <GhostCta onClick={() => setConfirmFinish(false)}>Keep training</GhostCta>
+            <BigCta style={{ minHeight: 52 }} onClick={() => { setConfirmFinish(false); doFinish(); }}>Finish anyway</BigCta>
+          </div>
+        </Dialog>
       )}
 
       {/* overflow menu */}
@@ -240,6 +264,7 @@ function ExerciseContent({
   exId,
   exerciseNumber,
   isAdded,
+  isReplaced,
   unit,
   info,
   overrides,
@@ -256,6 +281,7 @@ function ExerciseContent({
   exId: string;
   exerciseNumber: number;
   isAdded: boolean;
+  isReplaced: boolean;
   unit: 'kg' | 'lbs';
   info: Info;
   overrides: Record<number, number>;
@@ -271,6 +297,9 @@ function ExerciseContent({
 }) {
   const state = useStore();
   const ex = state.exercises[exId];
+  const isBW = ex?.equipment === 'Bodyweight';
+  const fmtSetWeight = (display: number) =>
+    isBW ? (display === 0 ? 'BW' : `BW +${formatNum(display)} ${unit}`) : `${formatNum(display)} ${unit}`;
   const { setCount, activeSetNumber, doneCount, doneNumbers, p } = info;
 
   const history = useMemo(() => completedHistoryForExercise(state, exId), [state, exId]);
@@ -290,16 +319,16 @@ function ExerciseContent({
       const cur = [...info.exLogs].sort((a, b) => a.setNumber - b.setNumber);
       if (cur.length) {
         const last = cur[cur.length - 1];
-        return { weightDisplay: round(kgToDisplay(last.weightKg, unit)), reps: last.reps };
+        return { weightDisplay: roundDisplay(kgToDisplay(last.weightKg, unit), unit), reps: last.reps };
       }
     }
     const same = lastLogs.find((l) => l.setNumber === n);
-    if (same) return { weightDisplay: round(kgToDisplay(same.weightKg, unit)), reps: same.reps };
+    if (same) return { weightDisplay: roundDisplay(kgToDisplay(same.weightKg, unit), unit), reps: same.reps };
     if (lastLogs.length) {
       const last = lastLogs[lastLogs.length - 1];
-      return { weightDisplay: round(kgToDisplay(last.weightKg, unit)), reps: last.reps };
+      return { weightDisplay: roundDisplay(kgToDisplay(last.weightKg, unit), unit), reps: last.reps };
     }
-    return { weightDisplay: round(kgToDisplay(DEFAULT_START_WEIGHT_KG, unit)), reps: p.low };
+    return { weightDisplay: isBW ? 0 : defaultStartDisplayWeight(unit), reps: p.low };
   };
 
   const [draft, setDraft] = useState(() => (activeSetNumber ? prefill(activeSetNumber) : { weightDisplay: 0, reps: 0 }));
@@ -313,18 +342,19 @@ function ExerciseContent({
   }, [activeSetNumber, exId]);
 
   const step = displayStep(unit);
-  const suggestedDisplay = suggestion ? round(kgToDisplay(suggestion.suggestedWeightKg, unit)) : null;
+  const suggestedDisplay = suggestion ? roundDisplay(kgToDisplay(suggestion.suggestedWeightKg, unit), unit) : null;
   const showSuggestion =
-    suggestedDisplay != null && activeSetNumber != null && draft.weightDisplay < suggestedDisplay - 1e-3;
+    suggestedDisplay != null &&
+    activeSetNumber != null &&
+    draft.weightDisplay < suggestedDisplay - 1e-3 &&
+    !(isBW && suggestion != null && suggestion.currentWeightKg === 0);
 
   const anyDone = doneCount > 0;
 
   return (
     <div className="stack gap-16" style={{ paddingBottom: 12 }}>
-      {/* hero */}
-      <StripedPlaceholder label="illustration" style={{ height: 160 }} />
       <div>
-        <div className="label-medium muted">EXERCISE {exerciseNumber}{isAdded ? ' · ADDED' : ''}</div>
+        <div className="label-medium muted">EXERCISE {exerciseNumber}{isReplaced ? ' · REPLACED' : isAdded ? ' · ADDED' : ''}</div>
         <h1 className="headline-large" style={{ margin: '6px 0 10px' }}>{ex?.name ?? 'Exercise'}</h1>
         <span className="pill pill-outline">{p.sets}×{p.low}-{p.high} · PRESCRIPTION</span>
       </div>
@@ -393,7 +423,13 @@ function ExerciseContent({
               <span className="label-medium muted" style={{ width: 46 }}>SET {n}</span>
               {done && log ? (
                 <div className="row grow gap-8">
-                  <span className="title-small grow">{formatWeight(log.weightKg, unit)} {unit} · {log.reps} reps</span>
+                  <span className="title-small grow">
+                    {isBW
+                      ? log.weightKg === 0
+                        ? 'BW'
+                        : `BW +${formatWeight(log.weightKg, unit)} ${unit}`
+                      : `${formatWeight(log.weightKg, unit)} ${unit}`} · {log.reps} reps
+                  </span>
                   <Check size={18} className="accent" />
                 </div>
               ) : isActive ? (
@@ -402,14 +438,14 @@ function ExerciseContent({
                     value={draft.weightDisplay}
                     step={step}
                     min={0}
-                    onChange={(v) => setDraft((d) => ({ ...d, weightDisplay: round(v) }))}
+                    onChange={(v) => setDraft((d) => ({ ...d, weightDisplay: roundDisplay(v, unit) }))}
                     onValueTap={() => onOpenKeypad('weight')}
-                    format={(v) => `${formatNum(v)} ${unit}`}
+                    format={fmtSetWeight}
                   />
                   <Stepper
                     value={draft.reps}
                     step={1}
-                    min={0}
+                    min={1}
                     max={99}
                     onChange={(v) => setDraft((d) => ({ ...d, reps: v }))}
                     onValueTap={() => onOpenKeypad('reps')}
@@ -438,6 +474,7 @@ function ExerciseContent({
       {/* Complete-set CTA lives here so it sits with the sets */}
       {activeSetNumber != null && (
         <BigCta
+          disabled={draft.reps < 1}
           onClick={() => {
             const undoneAfter = setCount - doneNumbers.size - 1;
             const isFinal = isLastExercise && undoneAfter <= 0;
@@ -455,7 +492,7 @@ function ExerciseContent({
           initial={keypad === 'weight' ? draft.weightDisplay : draft.reps}
           onClose={onCloseKeypad}
           onSave={(v) => {
-            if (keypad === 'weight') setDraft((d) => ({ ...d, weightDisplay: round(v) }));
+            if (keypad === 'weight') setDraft((d) => ({ ...d, weightDisplay: roundDisplay(v, unit) }));
             else setDraft((d) => ({ ...d, reps: Math.round(v) }));
           }}
         />
@@ -495,15 +532,31 @@ function RestOverlay({
   onAdjust,
   onSkip,
   onDone,
+  collapsed,
+  onToggleCollapsed,
 }: {
   endAt: number;
   duration: number;
   onAdjust: (delta: number) => void;
   onSkip: () => void;
   onDone: () => void;
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
 }) {
   const [now, setNow] = useState(Date.now());
   const firedRef = useRef(false);
+  const [notifPrompt, setNotifPrompt] = useState(() => {
+    if (typeof Notification === 'undefined' || Notification.permission !== 'default') return false;
+    try { return localStorage.getItem(NOTIF_PROMPT_DISMISSED_KEY) !== '1'; } catch { return true; }
+  });
+  const dismiss = () => {
+    try { localStorage.setItem(NOTIF_PROMPT_DISMISSED_KEY, '1'); } catch { /* ignore */ }
+    setNotifPrompt(false);
+  };
+  const enable = () => {
+    setNotifPrompt(false);
+    if (typeof Notification !== 'undefined') Notification.requestPermission().catch(() => {});
+  };
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 200);
     return () => window.clearInterval(id);
@@ -526,8 +579,32 @@ function RestOverlay({
   const R = 84;
   const C = 2 * Math.PI * R;
 
+  if (collapsed) {
+    return (
+      <div className="rest-bar">
+        <span className="title-medium" style={{ fontVariantNumeric: 'tabular-nums' }}>{mins}:{String(secs).padStart(2, '0')}</span>
+        <span className="label-small muted">REST</span>
+        <div className="row gap-6">
+          <button className="icon-btn" style={{ width: 40, height: 40 }} onClick={() => onAdjust(-30)}>−30</button>
+          <button className="icon-btn" style={{ width: 40, height: 40 }} onClick={() => onAdjust(30)}>+30</button>
+          <button className="icon-btn" style={{ width: 40, height: 40 }} onClick={onSkip} aria-label="Skip rest"><X size={16} /></button>
+          <button className="icon-btn" style={{ width: 40, height: 40 }} onClick={onToggleCollapsed} aria-label="Expand timer"><ChevronUp size={16} /></button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="rest-overlay">
+      {notifPrompt && (
+        <div className="card" style={{ maxWidth: 320, textAlign: 'left' }}>
+          <p className="body-medium" style={{ margin: '0 0 12px' }}>Get an alert when rest ends — even if you're in another tab.</p>
+          <div className="row gap-8">
+            <button className="ghost-cta" onClick={dismiss}>Not now</button>
+            <button className="big-cta" style={{ minHeight: 44 }} onClick={enable}>Enable</button>
+          </div>
+        </div>
+      )}
       <div className="row gap-24" style={{ alignItems: 'center' }}>
         <button className="icon-btn" style={{ width: 56, height: 56 }} onClick={() => onAdjust(-30)}>−30s</button>
         <svg width={200} height={200} viewBox="0 0 200 200">
@@ -545,6 +622,7 @@ function RestOverlay({
         <button className="icon-btn" style={{ width: 56, height: 56 }} onClick={() => onAdjust(30)}>+30s</button>
       </div>
       <button className="ghost-cta" style={{ maxWidth: 200 }} onClick={onSkip}>Skip</button>
+      <button className="ghost-cta" style={{ maxWidth: 200 }} onClick={onToggleCollapsed}>Minimize</button>
     </div>
   );
 }
@@ -596,9 +674,6 @@ function Terminal({ title, body, onBack }: { title: string; body: string; onBack
   );
 }
 
-function round(v: number): number {
-  return Math.round(v * 100) / 100;
-}
 function formatNum(v: number): string {
   return Number.isInteger(v) ? String(v) : String(parseFloat(v.toFixed(2)));
 }
