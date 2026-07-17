@@ -84,8 +84,22 @@ const REGIONS: Region[] = [
     ),
   },
   {
-    aliases: ['adductors', 'abductors', 'glutes', 'hamstrings', 'posterior chain'],
-    render: (f) => e(<path key="add" d="M48 96 L52 96 L52 136 L48 136 Z" fill={f} stroke={STROKE} strokeWidth="0.7" />),
+    aliases: ['glutes', 'posterior chain'],
+    render: (f) => (
+      <g key="glutes">
+        <ellipse cx="43" cy="99" rx="7.5" ry="6" fill={f} stroke={STROKE} strokeWidth="0.7" />
+        <ellipse cx="57" cy="99" rx="7.5" ry="6" fill={f} stroke={STROKE} strokeWidth="0.7" />
+      </g>
+    ),
+  },
+  {
+    aliases: ['adductors', 'abductors', 'hamstrings', 'posterior chain'],
+    render: (f) => (
+      <g key="hams">
+        <path d="M44 106 Q43 122 46 136 L52 134 Q52 118 52 104 Z" fill={f} stroke={STROKE} strokeWidth="0.7" />
+        <path d="M56 106 Q57 122 54 136 L48 134 Q48 118 48 104 Z" fill={f} stroke={STROKE} strokeWidth="0.7" />
+      </g>
+    ),
   },
   {
     aliases: ['calves'],
