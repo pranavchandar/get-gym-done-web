@@ -305,6 +305,7 @@ export function HomeScreen() {
       {showActivity && (
         <LogActivityDialog
           hasNextDay={!!upNext}
+          nextDayLabel={upNext ? `Day ${upNext.dayNumber} · ${upNext.name}` : null}
           onClose={() => setShowActivity(false)}
           onSave={(a) => {
             logActivity({
@@ -424,10 +425,12 @@ function CalendarCard({
 
 function LogActivityDialog({
   hasNextDay,
+  nextDayLabel,
   onClose,
   onSave,
 }: {
   hasNextDay: boolean;
+  nextDayLabel: string | null;
   onClose: () => void;
   onSave: (a: { activityType: string; durationMin: number | null; notes: string | null; countAsToday: boolean }) => void;
 }) {
@@ -454,10 +457,15 @@ function LogActivityDialog({
       />
       <textarea className="field mb-12" placeholder="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
       {hasNextDay && (
-        <button className="row-between mb-16" style={{ width: '100%', background: 'none', border: 'none', color: 'var(--fg)' }} onClick={() => setCountAsToday((v) => !v)}>
-          <span className="label-medium">COUNT AS TODAY'S WORKOUT</span>
-          <span className={`switch ${countAsToday ? 'on' : ''}`}><span /></span>
-        </button>
+        <>
+          <button className="row-between mb-16" style={{ width: '100%', background: 'none', border: 'none', color: 'var(--fg)' }} onClick={() => setCountAsToday((v) => !v)}>
+            <span className="label-medium">COUNT AS TODAY'S WORKOUT</span>
+            <span className={`switch ${countAsToday ? 'on' : ''}`}><span /></span>
+          </button>
+          {nextDayLabel && (
+            <p className="body-small muted" style={{ margin: '-8px 0 16px' }}>Marks {nextDayLabel} as done in your rotation.</p>
+          )}
+        </>
       )}
       <div className="row gap-8">
         <GhostCta onClick={onClose}>Cancel</GhostCta>
