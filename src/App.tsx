@@ -89,7 +89,7 @@ export function App() {
   }, [ensureSeeded]);
 
   return (
-    <HashRouter>
+    <HashRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <ThemeManager />
       <div className="app-frame">
         <Routes>
