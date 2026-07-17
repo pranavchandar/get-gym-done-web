@@ -40,10 +40,10 @@ export function DayOverviewScreen() {
         right={
           <div className="row gap-8">
             {total > 1 && (
-              <button className="icon-btn" aria-label="Switch day" onClick={() => setSwitching(true)}><Swap size={18} /></button>
+              <button className="chip" onClick={() => setSwitching(true)}><Swap size={14} /> Switch</button>
             )}
             {!day.isRestDay && (
-              <button className="icon-btn" aria-label="Edit exercises" onClick={() => setEditing(true)}><Edit size={18} /></button>
+              <button className="chip" onClick={() => setEditing(true)}><Edit size={14} /> Edit</button>
             )}
           </div>
         }
