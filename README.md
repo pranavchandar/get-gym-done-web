@@ -64,6 +64,24 @@ Settings → **Cloud Sync** syncs your data to a **private GitHub Gist**.
 
 The token never leaves your browser except in direct requests to `api.github.com`.
 
+## Exporting your routine (Workouts → Export)
+
+The **Workouts** tab exports the active split as a shareable document — this is the
+routine itself (days, exercises, prescriptions), not your logged history:
+
+| Format | File | Use |
+| --- | --- | --- |
+| PDF | `<routine>-routine.pdf` | Printable A4 sheet, one table per day, paginated |
+| Excel | `<routine>-routine.xlsx` | Real `.xlsx` — opens in Excel, Numbers, Sheets |
+| CSV | `<routine>-routine.csv` | UTF-8 with BOM, RFC 4180 quoting |
+| JSON | `<routine>-routine.json` | Structured, includes form cues and muscle groups |
+
+All four are generated in-browser with no dependencies: `src/export/zip.ts` is a
+minimal STORE-only ZIP writer (the `.xlsx` container) and `src/export/pdf.ts` emits
+PDF 1.4 using the standard Helvetica fonts, so nothing is uploaded and no CDN is
+involved. For a full data backup (sessions, sets, body metrics) use Settings →
+Export to JSON instead.
+
 ## Moving data between the Android app and the web app
 
 Export/import use the **same `BackupFile` v2 JSON** as the Android app, so data moves

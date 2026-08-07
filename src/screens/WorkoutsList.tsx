@@ -2,8 +2,10 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/store';
 import { activeSplit, activeDays, dayExercisesOf, completedCountForDay } from '../store/selectors';
-import { ChevronUp, ChevronDown, Trash, Plus } from '../components/icons';
+import { ChevronUp, ChevronDown, Trash, Plus, Download, FileText, Table, Braces } from '../components/icons';
+import { Sheet } from '../components/ui';
 import { toast } from '../components/toast';
+import { exportSplit, buildSplitExport, type ExportFormat } from '../export/splitExport';
 
 export function WorkoutsListScreen() {
   const navigate = useNavigate();
@@ -15,6 +17,7 @@ export function WorkoutsListScreen() {
   const split = activeSplit(state);
   const days = useMemo(() => activeDays(state), [state]);
   const [edit, setEdit] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   if (!split || days.length === 0) {
     return (
@@ -35,7 +38,14 @@ export function WorkoutsListScreen() {
           <div className="label-medium muted">ROUTINE</div>
           <h1 className="display-small" style={{ margin: '6px 0 0' }}>{split.name}</h1>
         </div>
-        <button className="text-link" onClick={() => setEdit((e) => !e)}>{edit ? 'Done' : 'Edit'}</button>
+        <div className="row gap-8">
+          {!edit && (
+            <button className="chip" onClick={() => setExporting(true)} aria-label="Export routine">
+              <Download size={14} /> Export
+            </button>
+          )}
+          <button className="text-link" onClick={() => setEdit((e) => !e)}>{edit ? 'Done' : 'Edit'}</button>
+        </div>
       </div>
 
       {days.map((d, i) => {
@@ -89,6 +99,56 @@ export function WorkoutsListScreen() {
           <Plus size={18} /> Add day
         </button>
       )}
+
+      {exporting && <ExportSheet splitId={split.id} onClose={() => setExporting(false)} />}
     </div>
+  );
+}
+
+const FORMATS: { key: ExportFormat; label: string; ext: string; hint: string; Icon: typeof FileText }[] = [
+  { key: 'pdf', label: 'PDF', ext: '.pdf', hint: 'Printable sheet — take it to the gym', Icon: FileText },
+  { key: 'xlsx', label: 'Excel', ext: '.xlsx', hint: 'Opens in Excel, Numbers or Sheets', Icon: Table },
+  { key: 'csv', label: 'CSV', ext: '.csv', hint: 'Plain table for any spreadsheet app', Icon: Table },
+  { key: 'json', label: 'JSON', ext: '.json', hint: 'Structured data, including form cues', Icon: Braces },
+];
+
+function ExportSheet({ splitId, onClose }: { splitId: string; onClose: () => void }) {
+  const state = useStore();
+  const summary = useMemo(() => buildSplitExport(state, splitId), [state, splitId]);
+
+  const run = (format: ExportFormat) => {
+    try {
+      if (exportSplit(state, splitId, format)) {
+        toast(`Routine exported as ${format.toUpperCase()}`);
+        onClose();
+      } else {
+        toast('Nothing to export yet.');
+      }
+    } catch {
+      toast(`Couldn't create the ${format.toUpperCase()} file.`);
+    }
+  };
+
+  return (
+    <Sheet onClose={onClose}>
+      <div className="headline-small mb-4">EXPORT ROUTINE</div>
+      {summary && (
+        <div className="body-small muted mb-16">
+          {summary.splitName} · {summary.trainingDays} training days · {summary.totalExercises} exercises · {summary.totalSets} sets
+        </div>
+      )}
+      <div className="stack gap-8">
+        {FORMATS.map(({ key, label, ext, hint, Icon }) => (
+          <button key={key} className="card row gap-12" style={{ color: 'var(--fg)', textAlign: 'left' }} onClick={() => run(key)}>
+            <Icon size={20} className="accent" />
+            <div className="stack grow">
+              <span className="title-small">{label} <span className="muted">{ext}</span></span>
+              <span className="body-small muted">{hint}</span>
+            </div>
+            <Download size={16} className="muted" />
+          </button>
+        ))}
+      </div>
+    </Sheet>
   );
 }
