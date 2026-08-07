@@ -1,7 +1,7 @@
 import seedData from '../data/seed_data.json';
 import type { Split, WorkoutDay, DayExercise, Exercise } from '../types';
 
-export const SEED_VERSION = 2;
+export const SEED_VERSION = 3;
 
 interface SeedDayExercise {
   exerciseId: string;

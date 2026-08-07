@@ -40,7 +40,7 @@ export const CONFETTI_COLORS = [
   '#55C46E',
 ];
 
-// The 8 split options shown on PickSplit, in display order. The last is the pseudo
+// The 9 split options shown on PickSplit, in display order. The last is the pseudo
 // "Build my own" option (id 'custom'). The rest map to seed split ids.
 export interface SplitOption {
   id: string;
@@ -48,7 +48,8 @@ export interface SplitOption {
 }
 
 export const SPLIT_OPTIONS: SplitOption[] = [
-  { id: 'ppl_6day', badge: 'RECOMMENDED' },
+  { id: 'toji_7day', badge: 'RECOMMENDED' },
+  { id: 'ppl_6day' },
   { id: 'upper_lower_4day' },
   { id: 'phul_4day' },
   { id: 'bro_5day' },
