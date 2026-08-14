@@ -306,6 +306,11 @@ textarea.field { resize: vertical; min-height: 60px; }
   display: flex; align-items: flex-end; justify-content: center;
   animation: fade 0.18s ease;
 }
+/* Static fallback where visualViewport is unavailable: dvh excludes mobile browser
+   chrome, which plain vh does not. The Sheet's JS refines this when it can. */
+@supports (height: 100dvh) {
+  .scrim { height: 100dvh; }
+}
 .scrim.center { align-items: center; }
 .sheet {
   width: 100%; max-width: var(--maxw);
@@ -313,7 +318,9 @@ textarea.field { resize: vertical; min-height: 60px; }
   border-top-left-radius: 22px; border-top-right-radius: 22px;
   border-top: 1px solid var(--line);
   max-height: 88vh; overflow-y: auto;
-  padding: 20px 20px calc(20px + env(safe-area-inset-bottom));
+  /* Extra bottom room so the last control never sits flush against the tab bar
+     or a home indicator. */
+  padding: 20px 20px calc(28px + env(safe-area-inset-bottom));
   animation: slideup 0.22s ease;
 }
 .dialog {
@@ -410,6 +417,8 @@ textarea.field { resize: vertical; min-height: 60px; }
 }
 .cal-cell.done { background: var(--accent-primary); color: var(--on-accent); border-color: var(--accent-primary); }
 .cal-cell.today { border-color: var(--accent-primary); }
+.cal-cell.rested { background: var(--surface3); color: var(--fg2); }
+.cal-cell.rested .tag { opacity: 0.7; }
 .cal-cell.empty { background: transparent; }
 .cal-cell .tag { font-size: 8px; font-weight: 700; letter-spacing: 0.4px; }
 

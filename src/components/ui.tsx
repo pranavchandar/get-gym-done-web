@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { ChevronLeft } from './icons';
 
 export function BigCta({
@@ -63,11 +63,34 @@ export function InitialTile({ name, size = 56 }: { name: string; size?: number }
   );
 }
 
-export function TrendArrow({ prev, curr }: { prev: number | null | undefined; curr: number | null | undefined }) {
+/**
+ * The arrow always points the way the number actually moved; only the colour says
+ * whether that move is good. Flipping the glyph for "lower is better" metrics (as
+ * body fat needs) would claim the value rose when it fell.
+ */
+export function TrendArrow({
+  prev,
+  curr,
+  goodDirection = 'up',
+}: {
+  prev: number | null | undefined;
+  curr: number | null | undefined;
+  goodDirection?: 'up' | 'down' | 'none';
+}) {
   if (prev == null || curr == null || prev === curr) return null;
   const up = curr > prev;
+  const color =
+    goodDirection === 'none'
+      ? 'var(--fg2)'
+      : (up ? 'up' : 'down') === goodDirection
+      ? 'var(--trend-up)'
+      : 'var(--trend-down)';
+  const delta = Math.abs(curr - prev);
   return (
-    <span style={{ color: up ? 'var(--trend-up)' : 'var(--trend-down)', fontWeight: 700 }}>
+    <span
+      style={{ color, fontWeight: 700 }}
+      title={`${up ? 'Up' : 'Down'} ${delta.toFixed(delta < 10 ? 1 : 0)} since last entry`}
+    >
       {up ? '↑' : '↓'}
     </span>
   );
@@ -117,6 +140,7 @@ export function Sheet({
   onClose: () => void;
   center?: boolean;
 }) {
+  const scrimRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -124,8 +148,30 @@ export function Sheet({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
+
+  // The on-screen keyboard and mobile browser toolbars shrink the *visual* viewport
+  // but not the layout viewport that `position: fixed` resolves against, which
+  // otherwise strands a sheet's Save button underneath them. Track the difference
+  // and lift the scrim by it so the CTA stays reachable.
+  useEffect(() => {
+    const vv = window.visualViewport;
+    const el = scrimRef.current;
+    if (!vv || !el) return;
+    const update = () => {
+      const inset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      el.style.bottom = `${inset}px`;
+    };
+    update();
+    vv.addEventListener('resize', update);
+    vv.addEventListener('scroll', update);
+    return () => {
+      vv.removeEventListener('resize', update);
+      vv.removeEventListener('scroll', update);
+    };
+  }, []);
+
   return (
-    <div className={`scrim ${center ? 'center' : ''}`} onClick={onClose}>
+    <div ref={scrimRef} className={`scrim ${center ? 'center' : ''}`} onClick={onClose}>
       <div className={center ? 'dialog' : 'sheet'} onClick={(e) => e.stopPropagation()}>
         {!center && <div className="sheet-handle" />}
         {children}

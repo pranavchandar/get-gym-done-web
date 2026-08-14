@@ -9,6 +9,7 @@ import {
   dayExercisesOf,
   completedByEpochDay,
   activityByEpochDay,
+  restByEpochDay,
   bodyMetricsSorted,
   sessionsByEpochDay,
   sessionLogs,
@@ -101,6 +102,7 @@ export function HomeScreen() {
 
   const completedMap = useMemo(() => completedByEpochDay(state), [state]);
   const activityMap = useMemo(() => activityByEpochDay(state), [state]);
+  const restDayMap = useMemo(() => restByEpochDay(state), [state]);
   const sessionsByDay = useMemo(() => sessionsByEpochDay(state), [state]);
 
   const [showActivity, setShowActivity] = useState(false);
@@ -155,7 +157,8 @@ export function HomeScreen() {
         <div className="stat-pill">
           <div className="big row" style={{ justifyContent: 'center', gap: 4 }}>
             {bwLatest != null ? `${formatWeight(bwLatest, unit)} ${unit}` : '—'}
-            <TrendArrow prev={bwPrev} curr={bwLatest} />
+            {/* Neutral: whether gaining or losing is "good" depends on the user's goal. */}
+            <TrendArrow prev={bwPrev} curr={bwLatest} goodDirection="none" />
           </div>
           <div className="label-small muted" style={{ marginTop: 4 }}>Bodyweight</div>
         </div>
@@ -240,7 +243,7 @@ export function HomeScreen() {
       </button>
 
       {/* Calendar */}
-      <CalendarCard completedMap={completedMap} activityMap={activityMap} today={today} sessionCount={sessionCount}
+      <CalendarCard completedMap={completedMap} activityMap={activityMap} restDays={restDayMap} today={today} sessionCount={sessionCount}
         canLogToday={!loggedToday && !todayIsRest && !!upNext}
         onToday={() => upNext && navigate(`/day/${upNext.id}`)}
         sessionsByDay={sessionsByDay}
@@ -328,6 +331,7 @@ export function HomeScreen() {
 function CalendarCard({
   completedMap,
   activityMap,
+  restDays,
   today,
   sessionCount,
   canLogToday,
@@ -337,6 +341,7 @@ function CalendarCard({
 }: {
   completedMap: Map<number, number>;
   activityMap: Map<number, string>;
+  restDays: Set<number>;
   today: number;
   sessionCount: number;
   canLogToday: boolean;
@@ -368,6 +373,9 @@ function CalendarCard({
           const workoutNum = completedMap.get(ed);
           const activity = activityMap.get(ed);
           const done = workoutNum != null || activity != null;
+          // A logged rest day is real data, but it is not a completed workout —
+          // mark it distinctly instead of filling the cell as if it were one.
+          const rested = !done && restDays.has(ed);
           const isToday = ed === today;
           const daySessions = sessionsByDay.get(ed);
           const tag =
@@ -377,13 +385,15 @@ function CalendarCard({
                 : `D${workoutNum}`
               : activity
               ? activity.slice(0, 3).toUpperCase()
+              : rested
+              ? 'REST'
               : '';
           const hasSessions = !!daySessions && daySessions.length > 0;
           const clickable = hasSessions || (isToday && canLogToday);
           return (
             <button
               key={i}
-              className={`cal-cell ${done ? 'done' : ''} ${isToday && !done ? 'today' : ''}`}
+              className={`cal-cell ${done ? 'done' : ''} ${rested ? 'rested' : ''} ${isToday && !done && !rested ? 'today' : ''}`}
               disabled={!clickable}
               style={{ cursor: clickable ? 'pointer' : 'default' }}
               onClick={() => {
@@ -400,6 +410,7 @@ function CalendarCard({
       <div className="row gap-16 mt-12 wrap">
         <span className="row gap-6 body-small muted"><span style={{ width: 10, height: 10, borderRadius: 999, background: 'var(--accent-primary)' }} /> Completed</span>
         <span className="row gap-6 body-small muted"><span style={{ width: 10, height: 10, borderRadius: 999, border: '2px solid var(--accent-primary)' }} /> Today</span>
+        <span className="row gap-6 body-small muted"><span style={{ width: 10, height: 10, borderRadius: 999, background: 'var(--surface3)' }} /> Rest</span>
         <span className="row gap-6 body-small muted">
           <span
             className="tag"

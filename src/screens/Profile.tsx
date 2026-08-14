@@ -128,17 +128,8 @@ export function ProfileScreen() {
         map.set(ed, (map.get(ed) ?? 0) + 1);
       }
     }
-    // auto-fill scheduled rest gaps between active days
-    const maxGap = maxConsecutiveRestDays(activeDays(state));
-    const activeEd = [...map.keys()].filter((ed) => (map.get(ed) ?? 0) > 0).sort((a, b) => a - b);
-    for (let i = 1; i < activeEd.length; i++) {
-      const a = activeEd[i - 1];
-      const b = activeEd[i];
-      const empties = b - a - 1;
-      if (empties > 0 && empties <= maxGap) {
-        for (let ed = a + 1; ed < b; ed++) if (!map.has(ed)) map.set(ed, 1);
-      }
-    }
+    // Only days with real logged data are filled in. Painting the scheduled rest
+    // gaps between them would show activity on days nothing was recorded.
     return map;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.setLogs, state.sessions]);
@@ -190,9 +181,9 @@ export function ProfileScreen() {
           <button className="chip" onClick={() => setLoggingBody(true)}><Plus size={14} /> Log</button>
         </div>
         <div className="row gap-8">
-          <BodyStat label="Weight" value={weight.curr != null ? `${formatWeight(weight.curr, unit)} ${unit}` : '—'} prev={weight.prev} curr={weight.curr} />
-          <BodyStat label="Body fat" value={fat.curr != null ? `${fat.curr}%` : '—'} prev={fat.prev} curr={fat.curr} invert />
-          <BodyStat label="Muscle" value={muscle.curr != null ? `${formatWeight(muscle.curr, unit)} ${unit}` : '—'} prev={muscle.prev} curr={muscle.curr} />
+          <BodyStat label="Weight" value={weight.curr != null ? `${formatWeight(weight.curr, unit)} ${unit}` : '—'} prev={weight.prev} curr={weight.curr} goodDirection="none" />
+          <BodyStat label="Body fat" value={fat.curr != null ? `${fat.curr}%` : '—'} prev={fat.prev} curr={fat.curr} goodDirection="down" />
+          <BodyStat label="Muscle" value={muscle.curr != null ? `${formatWeight(muscle.curr, unit)} ${unit}` : '—'} prev={muscle.prev} curr={muscle.curr} goodDirection="up" />
         </div>
         {bodyExpanded && bm.length === 0 && (
           <div className="center muted body-small mt-16">No entries yet — tap + Log to record your first weigh-in.</div>
@@ -242,6 +233,12 @@ export function ProfileScreen() {
         );
       })}
 
+      {/* consistency */}
+      <div className="card">
+        <div className="headline-small mb-12">CONSISTENCY</div>
+        <Heatmap count={(ed) => countMap.get(ed) ?? 0} today={today} />
+      </div>
+
       {/* exercise progression */}
       {progression.length > 0 && (
         <div>
@@ -270,12 +267,6 @@ export function ProfileScreen() {
           </div>
         </div>
       )}
-
-      {/* consistency */}
-      <div className="card">
-        <div className="headline-small mb-12">CONSISTENCY</div>
-        <Heatmap count={(ed) => countMap.get(ed) ?? 0} today={today} />
-      </div>
 
       {/* PRs */}
       {prList.length > 0 && (
@@ -327,12 +318,24 @@ function ProfileHeader({ onEdit }: { onEdit: () => void }) {
   );
 }
 
-function BodyStat({ label, value, prev, curr, invert }: { label: string; value: string; prev: number | null; curr: number | null; invert?: boolean }) {
+function BodyStat({
+  label,
+  value,
+  prev,
+  curr,
+  goodDirection,
+}: {
+  label: string;
+  value: string;
+  prev: number | null;
+  curr: number | null;
+  goodDirection?: 'up' | 'down' | 'none';
+}) {
   return (
     <div className="stat-pill">
       <div className="big row" style={{ justifyContent: 'center', gap: 4, fontSize: 22 }}>
         {value}
-        {invert ? <TrendArrow prev={curr} curr={prev} /> : <TrendArrow prev={prev} curr={curr} />}
+        <TrendArrow prev={prev} curr={curr} goodDirection={goodDirection} />
       </div>
       <div className="label-small muted" style={{ marginTop: 4 }}>{label}</div>
     </div>

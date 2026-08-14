@@ -1,4 +1,5 @@
 import type { StoreData } from './store';
+import { REST_SESSION_NOTE } from '../types';
 import type { WorkoutDay, Split, Exercise, SetLog, Session, BodyMetric } from '../types';
 import { nextWorkoutDay } from '../domain/rotation';
 import { epochDayLocal } from '../domain/dates';
@@ -105,27 +106,48 @@ export function bodyMetricsSorted(s: StoreData): BodyMetric[] {
   return Object.values(s.bodyMetrics).sort((a, b) => a.recordedAt - b.recordedAt);
 }
 
-/** epoch-day -> day number trained (completed sessions with a workoutDayId). */
+/**
+ * epoch-day -> day number actually trained. Rest logs carry a workoutDayId too
+ * (autoLogRestDay stores the rest day's id), so they must be filtered out here or
+ * a day you did nothing on renders as a completed workout.
+ */
 export function completedByEpochDay(s: StoreData): Map<number, number> {
   const map = new Map<number, number>();
   for (const se of Object.values(s.sessions)) {
     if (se.completedAt == null || se.workoutDayId == null) continue;
+    if (se.notes === REST_SESSION_NOTE) continue;
     const wd = s.workoutDays[se.workoutDayId];
-    if (!wd) continue;
+    if (!wd || wd.isRestDay) continue;
     map.set(epochDayLocal(se.completedAt), wd.dayNumber);
   }
   return map;
 }
 
-/** epoch-day -> activity type for day-less activity logs. */
+/**
+ * epoch-day -> activity type. Includes activities logged against a workout day
+ * (the "count as today's workout" switch) so the calendar can show both.
+ */
 export function activityByEpochDay(s: StoreData): Map<number, string> {
   const map = new Map<number, string>();
   for (const se of Object.values(s.sessions)) {
-    if (se.completedAt == null || se.workoutDayId != null) continue;
-    if (se.notes === 'rest') continue;
-    map.set(epochDayLocal(se.completedAt), se.activityType ?? 'Activity');
+    if (se.completedAt == null) continue;
+    if (se.notes === REST_SESSION_NOTE || !se.activityType) continue;
+    map.set(epochDayLocal(se.completedAt), se.activityType);
   }
   return map;
+}
+
+/** epoch-days carrying a logged rest day — real data, distinct from training. */
+export function restByEpochDay(s: StoreData): Set<number> {
+  const set = new Set<number>();
+  for (const se of Object.values(s.sessions)) {
+    if (se.completedAt == null) continue;
+    const isRest =
+      se.notes === REST_SESSION_NOTE ||
+      (se.workoutDayId != null && s.workoutDays[se.workoutDayId]?.isRestDay === true);
+    if (isRest) set.add(epochDayLocal(se.completedAt));
+  }
+  return set;
 }
 
 /** epoch-day -> completed sessions of that local day, sorted by completedAt. */
