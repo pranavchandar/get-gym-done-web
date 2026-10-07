@@ -14,6 +14,9 @@ import { Heatmap } from '../components/Heatmap';
 import { TrendArrow, Sheet, BigCta, GhostCta } from '../components/ui';
 import { ChevronDown, ChevronUp, Plus } from '../components/icons';
 import { ACCENT_PALETTES } from '../theme/palettes';
+import { MuscleBalanceCard } from '../components/MuscleBalance';
+import { OneRmSection } from '../components/OneRm';
+import { displayToKg } from '../domain/units';
 
 const RANGES: { key: string; label: string; days: number }[] = [
   { key: '1M', label: '1M', days: 30 },
@@ -28,6 +31,9 @@ export function ProfileScreen() {
   const unit = state.prefs.units;
   const setProfile = useStore((s) => s.setProfile);
   const logBodyMetric = useStore((s) => s.logBodyMetric);
+  const setPrefs = useStore((s) => s.setPrefs);
+  const goalKg = state.prefs.goalWeightKg ?? null;
+  const [goalOpen, setGoalOpen] = useState(false);
 
   const [range, setRange] = useState('3M');
   const [bodyExpanded, setBodyExpanded] = useState(false);
@@ -178,10 +184,13 @@ export function ProfileScreen() {
             <span className="headline-small">BODY</span>
             {bodyExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
           </button>
-          <button className="chip" onClick={() => setLoggingBody(true)}><Plus size={14} /> Log</button>
+          <div className="row gap-6">
+            <button className="chip" onClick={() => setGoalOpen(true)}>{goalKg != null ? `Goal ${formatWeight(goalKg, unit)} ${unit}` : 'Set goal'}</button>
+            <button className="chip" onClick={() => setLoggingBody(true)}><Plus size={14} /> Log</button>
+          </div>
         </div>
         <div className="row gap-8">
-          <BodyStat label="Weight" value={weight.curr != null ? `${formatWeight(weight.curr, unit)} ${unit}` : '—'} prev={weight.prev} curr={weight.curr} goodDirection="none" />
+          <BodyStat label="Weight" value={weight.curr != null ? `${formatWeight(weight.curr, unit)} ${unit}` : '—'} prev={weight.prev} curr={weight.curr} goodDirection={goalKg == null || weight.prev == null ? 'none' : goalKg < weight.prev ? 'down' : 'up'} />
           <BodyStat label="Body fat" value={fat.curr != null ? `${fat.curr}%` : '—'} prev={fat.prev} curr={fat.curr} goodDirection="down" />
           <BodyStat label="Muscle" value={muscle.curr != null ? `${formatWeight(muscle.curr, unit)} ${unit}` : '—'} prev={muscle.prev} curr={muscle.curr} goodDirection="up" />
         </div>
@@ -222,13 +231,25 @@ export function ProfileScreen() {
         const curr = series[series.length - 1];
         const deltaPct = series.length >= 2 && series[0] !== 0 ? ((series[series.length - 1] - series[0]) / series[0]) * 100 : null;
         const display = key === 'bodyFatPct' ? `${curr}%` : `${formatWeight(curr, unit)} ${unit}`;
+        const goal = key === 'bodyweightKg' ? goalKg : null;
+        const toGoal = goal != null ? Math.abs(curr - goal) : null;
         return (
           <div key={key} className="card">
             <div className="row-between mb-8">
               <span className="title-small">{label}</span>
               <span className="body-small muted">{display}{deltaPct != null ? ` · ${deltaPct >= 0 ? '+' : ''}${deltaPct.toFixed(1)}%` : ''}</span>
             </div>
-            <Sparkline values={key === 'bodyFatPct' ? series : series.map((v) => kgToDisplay(v, unit))} width={320} height={44} />
+            <Sparkline
+              values={key === 'bodyFatPct' ? series : series.map((v) => kgToDisplay(v, unit))}
+              goal={goal != null ? kgToDisplay(goal, unit) : null}
+              width={320}
+              height={44}
+            />
+            {goal != null && toGoal != null && (
+              <div className="body-small muted mt-8">
+                {toGoal < 0.05 ? 'At your goal weight.' : `${formatWeight(toGoal, unit)} ${unit} to your ${formatWeight(goal, unit)} ${unit} goal (dashed line).`}
+              </div>
+            )}
           </div>
         );
       })}
@@ -238,6 +259,8 @@ export function ProfileScreen() {
         <div className="headline-small mb-12">CONSISTENCY</div>
         <Heatmap count={(ed) => countMap.get(ed) ?? 0} today={today} />
       </div>
+
+      <MuscleBalanceCard />
 
       {/* exercise progression */}
       {progression.length > 0 && (
@@ -296,8 +319,11 @@ export function ProfileScreen() {
         </div>
       )}
 
+      {sessionCount > 0 && <OneRmSection />}
+
       {editing && <EditProfileSheet onClose={() => setEditing(false)} onSave={setProfile} />}
       {loggingBody && <LogBodySheet unit={unit} onClose={() => setLoggingBody(false)} onSave={logBodyMetric} />}
+      {goalOpen && <GoalSheet unit={unit} goalKg={goalKg} onClose={() => setGoalOpen(false)} onSave={(g) => setPrefs({ goalWeightKg: g })} />}
     </div>
   );
 }
@@ -408,6 +434,26 @@ function LogBodySheet({ unit, onClose, onSave }: { unit: 'kg' | 'lbs'; onClose: 
         >
           Save
         </BigCta>
+      </div>
+    </Sheet>
+  );
+}
+
+function GoalSheet({ unit, goalKg, onClose, onSave }: { unit: 'kg' | 'lbs'; goalKg: number | null; onClose: () => void; onSave: (kg: number | null) => void }) {
+  const [v, setV] = useState(goalKg != null ? formatWeight(goalKg, unit) : '');
+  const kg = v ? displayToKg(Number(v), unit) : null;
+  const err = kg != null && (!Number.isFinite(kg) || kg < BW_KG_MIN || kg > BW_KG_MAX)
+    ? `Enter ${Math.round(kgToDisplay(BW_KG_MIN, unit))}–${Math.round(kgToDisplay(BW_KG_MAX, unit))} ${unit}`
+    : null;
+  return (
+    <Sheet onClose={onClose}>
+      <div className="headline-small mb-8">Goal weight</div>
+      <p className="body-small muted" style={{ margin: '0 0 16px' }}>Drawn as a dashed line on your weight chart; the trend arrow turns green when you move toward it.</p>
+      <input className="field" inputMode="decimal" placeholder={`Goal (${unit})`} value={v} onChange={(e) => setV(e.target.value.replace(/[^\d.]/g, ''))} autoFocus />
+      {err && <div className="body-small" style={{ color: 'var(--coral)' }}>{err}</div>}
+      <div className="stack gap-8 mt-20">
+        <BigCta disabled={kg == null || !!err} onClick={() => { onSave(kg); onClose(); }}>Save goal</BigCta>
+        {goalKg != null && <GhostCta onClick={() => { onSave(null); onClose(); }}>Clear goal</GhostCta>}
       </div>
     </Sheet>
   );

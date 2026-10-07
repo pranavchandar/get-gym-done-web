@@ -6,7 +6,10 @@ import { weightIncreaseSuggestion } from '../domain/progression';
 import { kgToDisplay, displayToKg, displayStep, incrementKgFor, formatWeight, roundDisplay, defaultStartDisplayWeight } from '../domain/units';
 import { BigCta, GhostCta, Stepper, PillChip, Sheet, Dialog } from '../components/ui';
 import { X, More, Check, MinusCircle, Plus, ArrowRight, ChevronUp } from '../components/icons';
-import { MuscleMap } from '../components/MuscleMap';
+import { BodyMap, levelsForExercise } from '../components/BodyMap';
+import { musclesOf } from '../domain/muscles';
+import { bestSetOf } from '../domain/onerm';
+import { useWakeLock } from '../domain/wakeLock';
 import { Keypad } from '../components/Keypad';
 import { ExercisePicker } from '../components/ExercisePicker';
 import { toast } from '../components/toast';
@@ -54,6 +57,9 @@ export function ActiveWorkoutScreen() {
   const [keypad, setKeypad] = useState<null | 'weight' | 'reps'>(null);
   const [confirmFinish, setConfirmFinish] = useState(false);
   const [restCollapsed, setRestCollapsed] = useState(false);
+
+  // Keep the screen on for the whole session so the phone doesn't lock between sets.
+  useWakeLock(state.prefs.keepAwake !== false && !!day && !isRest && !emptyDay);
 
   const active = state.activeSession;
 
@@ -304,6 +310,7 @@ function ExerciseContent({
 
   const history = useMemo(() => completedHistoryForExercise(state, exId), [state, exId]);
   const lastLogs = useMemo(() => lastCompletedLogsForExercise(state, exId), [state, exId]);
+  const best1RM = useMemo(() => bestSetOf(history), [history]);
   const suggestion = useMemo(
     () => weightIncreaseSuggestion(history, p.high, incrementKgFor(unit)),
     [history, p.high, unit],
@@ -356,12 +363,19 @@ function ExerciseContent({
       <div>
         <div className="label-medium muted">EXERCISE {exerciseNumber}{isReplaced ? ' · REPLACED' : isAdded ? ' · ADDED' : ''}</div>
         <h1 className="headline-large" style={{ margin: '6px 0 10px' }}>{ex?.name ?? 'Exercise'}</h1>
-        <span className="pill pill-outline">{p.sets}×{p.low}-{p.high} · PRESCRIPTION</span>
+        <div className="row wrap gap-6">
+          <span className="pill pill-outline">{p.sets}×{p.low}-{p.high} · PRESCRIPTION</span>
+          {best1RM && !isBW && (
+            <span className="pill pill-outline" title={`Estimated from ${formatWeight(best1RM.weightKg, unit)} ${unit} × ${best1RM.reps}`}>
+              EST. 1RM {formatWeight(best1RM.est, unit)} {unit}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* targets */}
       <div className="card row gap-16">
-        <MuscleMap muscles={ex ? [ex.primaryMuscle, ...ex.secondaryMuscles] : []} size={64} />
+        <BodyMap levels={levelsForExercise(musclesOf(ex))} figure={state.prefs.bodyFigure} height={112} label={`muscles worked by ${ex?.name ?? 'this exercise'}`} />
         <div className="stack grow">
           <div className="label-medium muted mb-8">TARGETS</div>
           <div className="row wrap gap-6">

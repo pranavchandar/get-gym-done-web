@@ -533,14 +533,15 @@ function DaySessionsSheet({
             );
           }
 
-          if (s.workoutDayId != null) {
-            const wd = state.workoutDays[s.workoutDayId];
-            const logs = sessionLogs(state, s.id);
+          // Imported workouts carry sets but no routine day; show them as workouts too.
+          const logs = sessionLogs(state, s.id);
+          if (s.workoutDayId != null || logs.length > 0) {
+            const wd = s.workoutDayId ? state.workoutDays[s.workoutDayId] : null;
             const vol = Math.round(kgToDisplay(totalVolumeKg(logs), unit));
             return (
               <button key={s.id} className="card row-between" style={{ padding: 14, color: 'var(--fg)', textAlign: 'left' }} onClick={() => { onClose(); navigate(`/complete/${s.id}`); }}>
                 <div className="stack">
-                  <span className="title-small">{wd?.name ?? 'Workout'}</span>
+                  <span className="title-small">{wd?.name ?? s.notes ?? 'Workout'}</span>
                   <span className="body-small muted">{logs.length} sets · {vol} {unit} · {time}</span>
                 </div>
                 <ChevronRight size={18} className="muted" />

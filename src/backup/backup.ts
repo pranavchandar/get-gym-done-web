@@ -176,7 +176,11 @@ export function applyBackup(data: BackupFile): void {
     setLogs: toRecord(data.setLogs),
     bodyMetrics: toRecord(data.bodyMetrics),
   };
-  if (prefs) patch.prefs = prefs;
+  if (prefs) {
+    // The Android backup format has no slot for web-only prefs; keep this browser's.
+    const cur = useStore.getState().prefs;
+    patch.prefs = { ...prefs, goalWeightKg: cur.goalWeightKg, bodyFigure: cur.bodyFigure, keepAwake: cur.keepAwake };
+  }
 
   // Safety net: snapshot current data before wiping it, in case the import
   // turns out to be unwanted or the user needs to recover.
