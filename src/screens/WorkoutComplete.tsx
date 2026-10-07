@@ -3,7 +3,10 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useStore } from '../store/store';
 import { sessionLogs } from '../store/selectors';
 import { totalVolumeKg, countPRs } from '../domain/metrics';
-import { displayToKg, kgToDisplay } from '../domain/units';
+import { displayToKg, kgToDisplay, formatWeight } from '../domain/units';
+import { bestSetOf } from '../domain/onerm';
+import { loadOfLogs, levelsOf, rankOf, MUSCLE_LABEL } from '../domain/muscles';
+import { BodyMap } from '../components/BodyMap';
 import { epochDayLocal } from '../domain/dates';
 import { BigCta } from '../components/ui';
 import { Check, ArrowRight } from '../components/icons';
@@ -61,6 +64,30 @@ export function WorkoutCompleteScreen() {
     return { prCount, volLabel, volSub };
   }, [state, session, sessionId, logs, unit]);
 
+  const muscles = useMemo(() => {
+    const load = loadOfLogs(logs, state.exercises);
+    return { levels: levelsOf(load), worked: rankOf(load).worked };
+  }, [logs, state.exercises]);
+
+  // Exercises whose best estimated 1RM this session beats every earlier session's.
+  const oneRmRecords = useMemo(() => {
+    if (!session || session.completedAt == null) return [];
+    const completedAt = session.completedAt;
+    const earlier = new Set(
+      Object.values(state.sessions)
+        .filter((o) => o.completedAt != null && o.id !== sessionId && o.completedAt < completedAt)
+        .map((o) => o.id),
+    );
+    const out: { exId: string; est: number; prev: number | null }[] = [];
+    for (const exId of new Set(logs.map((l) => l.exerciseId))) {
+      const now = bestSetOf(logs.filter((l) => l.exerciseId === exId));
+      if (!now) continue;
+      const prior = bestSetOf(Object.values(state.setLogs).filter((l) => l.exerciseId === exId && earlier.has(l.sessionId)));
+      if (!prior || now.est > prior.est) out.push({ exId, est: now.est, prev: prior?.est ?? null });
+    }
+    return out;
+  }, [state.sessions, state.setLogs, session, sessionId, logs]);
+
   const today = epochDayLocal(Date.now());
   const todayRow = Object.values(state.bodyMetrics).find((r) => epochDayLocal(r.recordedAt) === today);
   const bwLogged = todayRow && todayRow.bodyweightKg != null;
@@ -80,10 +107,10 @@ export function WorkoutCompleteScreen() {
   return (
     <div className="screen">
       <div className="screen-scroll pad center stack gap-16" style={{ paddingTop: 40, paddingBottom: 32 }}>
-        <div style={{ width: 96, height: 96, borderRadius: 999, background: 'var(--accent-primary)', color: 'var(--on-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ width: 96, height: 96, flexShrink: 0, alignSelf: 'center', borderRadius: 999, background: 'var(--accent-primary)', color: 'var(--on-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <Check size={52} />
         </div>
-        <div className="label-medium muted">DAY {day?.dayNumber ?? ''} DONE</div>
+        <div className="label-medium muted">{day ? `DAY ${day.dayNumber} DONE` : 'WORKOUT DONE'}</div>
         <h1 className="display-medium" style={{ margin: 0 }}>
           {day?.name ?? 'WORKOUT'}<br /><span className="accent">LOCKED IN.</span>
         </h1>
@@ -101,6 +128,33 @@ export function WorkoutCompleteScreen() {
             <div className="label-small muted" style={{ marginTop: 4 }}>{volSub}</div>
           </div>
         </div>
+
+        {logs.length > 0 && (
+          <div className="card" style={{ width: '100%', textAlign: 'left' }}>
+            <div className="label-medium muted mb-12">MUSCLES HIT</div>
+            <BodyMap levels={muscles.levels} figure={state.prefs.bodyFigure} height={170} label="muscles trained this session" />
+            {muscles.worked.length > 0 && (
+              <div className="body-small center mt-12">{muscles.worked.slice(0, 5).map((m) => MUSCLE_LABEL[m]).join(' · ')}</div>
+            )}
+          </div>
+        )}
+
+        {oneRmRecords.length > 0 && (
+          <div className="card" style={{ width: '100%', textAlign: 'left' }}>
+            <div className="label-medium accent mb-8">NEW ESTIMATED 1RM</div>
+            <div className="stack gap-6">
+              {oneRmRecords.map((r) => (
+                <div key={r.exId} className="row-between body-medium">
+                  <span>{state.exercises[r.exId]?.name ?? 'Exercise'}</span>
+                  <span className="title-small">
+                    {formatWeight(r.est, unit)} {unit}
+                    {r.prev != null && <span className="body-small muted"> · was {formatWeight(r.prev, unit)}</span>}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="card" style={{ width: '100%', textAlign: 'left' }}>
           {bwLogged ? (

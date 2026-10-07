@@ -1,8 +1,14 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/store';
 import { ACCENT_PALETTES } from '../theme/palettes';
-import type { ThemeChoice, Units } from '../types';
+import type { BodyFigure, ThemeChoice, Units } from '../types';
+import { wakeLockSupported } from '../domain/wakeLock';
+import { parseImport, planImport, SOURCE_LABEL } from '../import/csvImport';
+import type { ParsedImport } from '../import/csvImport';
+import { loadLibrary } from '../data/library';
+import type { LibraryEntry } from '../data/library';
+import { formatDateShort } from '../domain/dates';
 import { REST_MIN, REST_MAX, REST_STEP } from '../types';
 import { downloadBackup, parseBackup, applyBackup } from '../backup/backup';
 import { getToken, setToken, getGistId, getLastSync, pushToGist, pullFromGist, clearGistConfig } from '../sync/gist';
@@ -17,8 +23,12 @@ export function SettingsScreen() {
   const setUnits = useStore((s) => s.setUnits);
   const setRestSeconds = useStore((s) => s.setRestSeconds);
   const setAccent = useStore((s) => s.setAccent);
+  const setPrefs = useStore((s) => s.setPrefs);
+  const keepAwake = prefs.keepAwake !== false;
 
   const fileRef = useRef<HTMLInputElement>(null);
+  const csvRef = useRef<HTMLInputElement>(null);
+  const [csvImport, setCsvImport] = useState<{ parsed: ParsedImport; library: LibraryEntry[] | null } | null>(null);
   const [importData, setImportData] = useState<ReturnType<typeof parseBackup> | null>(null);
   const [pullConfirm, setPullConfirm] = useState<string | null>(null);
   const [resetConfirm, setResetConfirm] = useState(false);
@@ -64,6 +74,27 @@ export function SettingsScreen() {
         </div>
         <div className="label-medium muted mb-8" style={{ marginTop: 16 }}>Default rest between sets</div>
         <Stepper value={prefs.restSeconds} step={REST_STEP} min={REST_MIN} max={REST_MAX} onChange={setRestSeconds} format={(v) => `${v}s`} />
+        <button
+          className="row-between"
+          style={{ width: '100%', background: 'none', border: 'none', color: 'var(--fg)', marginTop: 20, padding: 0 }}
+          onClick={() => setPrefs({ keepAwake: !keepAwake })}
+          role="switch"
+          aria-checked={keepAwake}
+        >
+          <span className="label-medium">KEEP SCREEN AWAKE DURING WORKOUTS</span>
+          <span className={`switch ${keepAwake ? 'on' : ''}`}><span /></span>
+        </button>
+        <p className="body-small muted" style={{ margin: '6px 0 0' }}>
+          {wakeLockSupported()
+            ? 'No unlocking your phone between sets. Released as soon as you leave the workout.'
+            : "This browser can't keep the screen on, so this setting has no effect here."}
+        </p>
+        <div className="label-medium muted mb-8" style={{ marginTop: 16 }}>Muscle map figure</div>
+        <div className="seg">
+          {(['male', 'female'] as BodyFigure[]).map((f) => (
+            <button key={f} className={(prefs.bodyFigure ?? 'male') === f ? 'active' : ''} onClick={() => setPrefs({ bodyFigure: f })}>{f}</button>
+          ))}
+        </div>
       </Section>
 
       {/* Routine */}
@@ -81,6 +112,27 @@ export function SettingsScreen() {
         <div className="stack gap-8">
           <GhostCta onClick={() => { downloadBackup('gymdone-backup.json'); toast('Backup downloaded'); }}>Export to JSON</GhostCta>
           <GhostCta onClick={() => fileRef.current?.click()}>Import from JSON</GhostCta>
+          <GhostCta onClick={() => csvRef.current?.click()}>Import history from Strong, Hevy or FitNotes</GhostCta>
+          <input
+            ref={csvRef}
+            type="file"
+            accept="text/csv,.csv,text/plain"
+            style={{ display: 'none' }}
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              e.target.value = '';
+              if (!file) return;
+              try {
+                const parsed = parseImport(await file.text());
+                if (parsed.sets.length === 0) throw new Error('No completed sets found in that file.');
+                // Matching against the library is best-effort; offline we fall back to the catalog.
+                const library = await loadLibrary().catch(() => null);
+                setCsvImport({ parsed, library });
+              } catch (err) {
+                toast(err instanceof Error ? err.message : 'Could not read that file.');
+              }
+            }}
+          />
           <input
             ref={fileRef}
             type="file"
@@ -114,6 +166,8 @@ export function SettingsScreen() {
         </Dialog>
       )}
 
+      {csvImport && <CsvImportDialog {...csvImport} onClose={() => setCsvImport(null)} />}
+
       {pullConfirm && (
         <Dialog onClose={() => setPullConfirm(null)}>
           <div className="headline-small mb-8">Pull from cloud?</div>
@@ -140,6 +194,73 @@ export function SettingsScreen() {
         </Dialog>
       )}
     </div>
+  );
+}
+
+function CsvImportDialog({ parsed, library, onClose }: { parsed: ParsedImport; library: LibraryEntry[] | null; onClose: () => void }) {
+  const exercises = useStore((s) => s.exercises);
+  const sessions = useStore((s) => s.sessions);
+  const importHistory = useStore((s) => s.importHistory);
+  const prefUnit = useStore((s) => s.prefs.units);
+  const [unit, setUnit] = useState<Units>(prefUnit);
+
+  const plan = useMemo(
+    () => planImport(parsed, unit, exercises, new Set(Object.keys(sessions)), library),
+    [parsed, unit, exercises, sessions, library],
+  );
+  const source = SOURCE_LABEL[parsed.source];
+
+  return (
+    <Dialog onClose={onClose}>
+      <div className="headline-small mb-8">Import from {source}?</div>
+      {plan.sessions.length === 0 ? (
+        <p className="body-medium muted">
+          {plan.duplicateWorkouts > 0 ? 'Every workout in this file has already been imported.' : 'Nothing to import.'}
+        </p>
+      ) : (
+        <div className="stack gap-6 body-medium">
+          <div>
+            <b>{plan.sessions.length}</b> workout{plan.sessions.length === 1 ? '' : 's'} · <b>{plan.setLogs.length}</b> sets
+            {plan.firstAt != null && plan.lastAt != null && (
+              <span className="muted"> · {formatDateShort(plan.firstAt)} {new Date(plan.firstAt).getFullYear()} – {formatDateShort(plan.lastAt)} {new Date(plan.lastAt).getFullYear()}</span>
+            )}
+          </div>
+          <div className="body-small muted">
+            {plan.matched} exercise{plan.matched === 1 ? '' : 's'} matched{plan.created > 0 ? `, ${plan.created} added as custom exercises` : ''}.
+            {plan.duplicateWorkouts > 0 && ` ${plan.duplicateWorkouts} already imported, skipped.`}
+            {plan.skipped > 0 && ` ${plan.skipped} row${plan.skipped === 1 ? '' : 's'} without reps (warm-ups, cardio, rest timers) left out.`}
+          </div>
+          {parsed.needsUnit && (
+            <>
+              <div className="label-medium muted mt-8">The file doesn't say which unit its weights are in:</div>
+              <div className="seg">
+                {(['kg', 'lbs'] as Units[]).map((u) => (
+                  <button key={u} className={unit === u ? 'active' : ''} onClick={() => setUnit(u)}>{u}</button>
+                ))}
+              </div>
+            </>
+          )}
+          <p className="body-small muted" style={{ margin: '4px 0 0' }}>
+            Imported workouts count toward your stats, records and weight suggestions. Your routine rotation isn't changed, and existing data is kept.
+          </p>
+        </div>
+      )}
+      <div className="row gap-8 mt-20">
+        <GhostCta onClick={onClose}>Cancel</GhostCta>
+        {plan.sessions.length > 0 && (
+          <BigCta
+            style={{ minHeight: 52 }}
+            onClick={() => {
+              importHistory({ exercises: plan.newExercises, sessions: plan.sessions, setLogs: plan.setLogs });
+              toast(`Imported ${plan.sessions.length} workout${plan.sessions.length === 1 ? '' : 's'} from ${source}`);
+              onClose();
+            }}
+          >
+            Import
+          </BigCta>
+        )}
+      </div>
+    </Dialog>
   );
 }
 

@@ -35,6 +35,9 @@ const defaultPrefs: UserPrefs = {
   handle: null,
   color: null,
   avatarPhoto: null,
+  goalWeightKg: null,
+  bodyFigure: 'male',
+  keepAwake: true,
 };
 
 export interface DraftDay {
@@ -69,12 +72,15 @@ export interface StoreActions {
   setRestSeconds: (seconds: number) => void;
   setAccent: (a: string) => void;
   setProfile: (p: { handle?: string | null; color?: string | null; avatarPhoto?: string | null }) => void;
+  setPrefs: (p: Pick<Partial<UserPrefs>, 'goalWeightKg' | 'bodyFigure' | 'keepAwake'>) => void;
   // splits / onboarding
   activatePresetSplit: (splitId: string) => void;
   activateExistingSplit: (splitId: string) => void;
   commitCustomSplit: (draft: RoutineDraft) => string;
   // exercises
   createCustomExercise: (fields: Partial<Exercise> & { name: string; primaryMuscle: string }) => string;
+  /** Copy a library exercise into the catalog (idempotent) and return its id. */
+  addLibraryExercise: (ex: Exercise) => string;
   // day/week editing
   updateDayName: (dayId: string, name: string) => void;
   moveDay: (splitId: string, dayNumber: number, dir: -1 | 1) => void;
@@ -112,6 +118,8 @@ export interface StoreActions {
   consumeConfetti: () => void;
   // data
   replaceAll: (data: Partial<StoreData>) => void;
+  /** Merge imported history (other trackers' exports); existing records win. */
+  importHistory: (h: { exercises: Exercise[]; sessions: Session[]; setLogs: SetLog[] }) => void;
 }
 
 export type Store = StoreData & StoreActions;
@@ -201,6 +209,7 @@ export const useStore = create<Store>()(
       },
       setAccent: (a) => set((s) => ({ prefs: { ...s.prefs, accent: a } })),
       setProfile: (p) => set((s) => ({ prefs: { ...s.prefs, ...p } })),
+      setPrefs: (p) => set((s) => ({ prefs: { ...s.prefs, ...p } })),
 
       activatePresetSplit: (splitId) =>
         set((s) => ({ prefs: { ...s.prefs, activeSplitId: splitId, onboardingComplete: true } })),
@@ -262,6 +271,11 @@ export const useStore = create<Store>()(
         };
         set((s) => ({ exercises: { ...s.exercises, [id]: ex } }));
         return id;
+      },
+
+      addLibraryExercise: (ex) => {
+        if (!get().exercises[ex.id]) set((s) => ({ exercises: { ...s.exercises, [ex.id]: ex } }));
+        return ex.id;
       },
 
       updateDayName: (dayId, name) =>
@@ -644,10 +658,22 @@ export const useStore = create<Store>()(
       armConfetti: () => set({ confettiArmed: true }),
       consumeConfetti: () => set({ confettiArmed: false }),
 
+      importHistory: (h) =>
+        set((s) => {
+          const exercises = { ...s.exercises };
+          for (const e of h.exercises) if (!exercises[e.id]) exercises[e.id] = e;
+          const sessions = { ...s.sessions };
+          for (const se of h.sessions) if (!sessions[se.id]) sessions[se.id] = se;
+          const setLogs = { ...s.setLogs };
+          for (const l of h.setLogs) if (!setLogs[l.id]) setLogs[l.id] = l;
+          return { exercises, sessions, setLogs };
+        }),
+
       replaceAll: (data) =>
         set(() => ({
           ...initialData(),
           ...data,
+          prefs: { ...defaultPrefs, ...data.prefs },
           seedVersion: SEED_VERSION,
           activeSession: null,
         })),
@@ -655,6 +681,12 @@ export const useStore = create<Store>()(
     {
       name: STORAGE_KEY,
       version: 1,
+      // Deep-merge prefs so fields added after a user's first run get their defaults
+      // instead of staying undefined (the default merge is shallow).
+      merge: (persisted, current) => {
+        const p = (persisted ?? {}) as Partial<StoreData>;
+        return { ...current, ...p, prefs: { ...current.prefs, ...p.prefs } };
+      },
       partialize: (state): StoreData => ({
         seedVersion: state.seedVersion,
         splits: state.splits,

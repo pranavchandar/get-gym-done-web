@@ -98,3 +98,6 @@ export const Table = ({ size, className }: IconProps) => (
 export const Braces = ({ size, className }: IconProps) => (
   <svg {...S(size)} className={className}><path d="M8 3H7a2 2 0 0 0-2 2v4a2 2 0 0 1-2 2 2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h1" /><path d="M16 3h1a2 2 0 0 1 2 2v4a2 2 0 0 0 2 2 2 2 0 0 0-2 2v4a2 2 0 0 1-2 2h-1" /></svg>
 );
+export const Info = ({ size, className }: IconProps) => (
+  <svg {...S(size)} className={className}><circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" /></svg>
+);

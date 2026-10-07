@@ -3,7 +3,7 @@ import { useStore } from '../store/store';
 import { resolveTheme } from '../theme/apply';
 import { BigCta } from '../components/ui';
 import { ArrowRight } from '../components/icons';
-import { MuscleMap } from '../components/MuscleMap';
+import { BodyMap } from '../components/BodyMap';
 
 export function SplashScreen() {
   const navigate = useNavigate();
@@ -52,7 +52,7 @@ export function SplashScreen() {
               justifyContent: 'center',
             }}
           >
-            <MuscleMap muscles={['chest', 'shoulders', 'quads']} size={84} />
+            <BodyMap levels={{ chest: 4, deltoids: 3, quadriceps: 4, 'upper-back': 2, gluteal: 3, triceps: 2 }} height={150} />
           </div>
           <BigCta onClick={() => navigate('/pick-split')}>
             Get started <ArrowRight size={22} />

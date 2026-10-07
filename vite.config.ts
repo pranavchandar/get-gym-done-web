@@ -5,6 +5,8 @@ import { VitePWA } from 'vite-plugin-pwa'
 // Deployed at https://pranavchandar.github.io/get-gym-done-web/
 export default defineConfig({
   base: '/get-gym-done-web/',
+  // The exercise library is one deliberately lazy-loaded ~700 KB chunk (~90 KB gzipped).
+  build: { chunkSizeWarningLimit: 800 },
   plugins: [
     react(),
     VitePWA({

@@ -2,6 +2,7 @@
 
 export type Units = 'kg' | 'lbs';
 export type ThemeChoice = 'light' | 'dark' | 'system';
+export type BodyFigure = 'male' | 'female';
 
 export interface Split {
   id: string;
@@ -81,6 +82,11 @@ export interface UserPrefs {
   handle?: string | null;
   color?: string | null;
   avatarPhoto?: string | null;
+  // Web-only prefs. Optional because older persisted state predates them — read them
+  // through the defaults in store.ts, never directly.
+  goalWeightKg?: number | null;
+  bodyFigure?: BodyFigure;
+  keepAwake?: boolean;
 }
 
 // Ephemeral-but-persisted state of the workout currently being logged.

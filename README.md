@@ -17,11 +17,25 @@ no account required. It installs as a PWA and is designed phone-first.
 - **Active workout** — per-set weight/rep steppers with a numeric keypad, a wall-clock
   rest timer (with ±30s / skip, beep + vibrate + notification), progressive-overload
   "time to add weight" prompts, and add/replace/remove exercise on the fly. The whole
-  in-progress session (including the running rest timer) survives a page reload.
-- **Profile** — total volume, body metrics with sparklines, per-exercise progression,
-  an 18-week consistency heatmap, and a personal-records list.
-- **Settings** — theme (system/light/dark), 10 accent palettes, kg/lbs, reset routine,
-  cloud sync, and JSON export/import.
+  in-progress session (including the running rest timer) survives a page reload. An
+  anatomical body map shows what the exercise targets, the best estimated 1RM sits
+  next to the prescription, and the **screen stays awake** for the whole session
+  (Screen Wake Lock API; switchable in Settings).
+- **Exercise library** — on top of the built-in catalog, **1,324 exercises** with
+  step-by-step instructions, searchable and filterable by body part and equipment (the
+  equipment chips only offer combinations that have results). Picking one copies it
+  into your catalog, so it behaves like any other exercise.
+- **Profile** — total volume, body metrics with sparklines and an optional **goal
+  weight** (dashed line; the trend arrow goes green when you move toward it),
+  per-exercise progression, an 18-week consistency heatmap, a personal-records list, a
+  **muscle-balance map** (front/back, male or female figure) shaded by sets per muscle
+  over a week / month / all time that names the muscles you *haven't* trained, and an
+  **estimated 1RM** per exercise (Epley, from your best set of ≤12 reps — it names the
+  set) with a trend line and a 1RM / rep-max calculator.
+- **Workout complete** — the muscles you just hit, plus any new estimated-1RM records.
+- **Settings** — theme (system/light/dark), 10 accent palettes, kg/lbs, keep-awake,
+  body-map figure, reset routine, cloud sync, JSON export/import, and importing history
+  from **Strong, Hevy or FitNotes**.
 
 ## Data storage
 
@@ -33,6 +47,10 @@ are epoch milliseconds. Seed data (splits + exercise catalog) is loaded on first
 
 Because storage is per-browser, clearing site data or switching browsers/devices
 starts fresh — use **Export** or **Cloud Sync** to move your data.
+
+The goal weight, body-map figure and keep-awake switch are web-only settings: the
+shared `BackupFile` format has no field for them, so they stay in this browser and are
+kept as-is when you import a backup.
 
 ## Running locally
 
@@ -64,6 +82,21 @@ Settings → **Cloud Sync** syncs your data to a **private GitHub Gist**.
 
 The token never leaves your browser except in direct requests to `api.github.com`.
 
+## Importing history from other apps (Settings → Data)
+
+**Import history from Strong, Hevy or FitNotes** reads those apps' CSV exports; the
+format is detected from the header row.
+
+- Every workout becomes a completed session with its sets, so stats, PRs, estimated
+  1RM, the muscle map and "last time" weight prefills all pick it up. Imported sessions
+  aren't tied to a routine day, so your split rotation doesn't move.
+- Exercise names are matched against your catalog and the exercise library
+  ("Bench Press (Barbell)" finds "Barbell Bench Press"); anything unrecognised becomes a
+  custom exercise, so no sets are dropped. Warm-up sets, rest-timer rows and rows
+  without reps (cardio, timed holds) are skipped and counted in the preview.
+- When a file doesn't record the weight unit (older Strong exports), the preview asks
+  for it. Importing merges into your data; re-importing the same file adds nothing twice.
+
 ## Exporting your routine (Workouts → Export)
 
 The **Workouts** tab exports the active split as a shareable document — this is the
@@ -94,6 +127,15 @@ both ways:
   then import it in the Android app. The web export writes Android's `userPrefs` field
   names so round-trips are lossless. `exerciseMedia` is exported as `[]` and ignored on
   import (media uploads are out of scope on the web).
+
+## Third-party data
+
+The body-map outlines come from [MuscleMap](https://github.com/melihcolpan/MuscleMap)
+(MIT) and the exercise library's text from
+[exercises-dataset](https://github.com/hasaneyldrm/exercises-dataset) (MIT, text only —
+its images/GIFs are © Gym visual and are not used). Both load on demand and are
+precached for offline use. Regenerate them with the scripts in `scripts/`; licenses are
+in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Notes / scope
 
