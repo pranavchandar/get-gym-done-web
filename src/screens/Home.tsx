@@ -18,7 +18,7 @@ import { maxConsecutiveRestDays } from '../domain/rotation';
 import { currentStreakDays } from '../domain/streak';
 import { epochDayLocal, todayEpochDay, WEEKDAY_FULL, MONTH_NAMES } from '../domain/dates';
 import { isTrainingSession, totalVolumeKg, estimateDurationMin } from '../domain/metrics';
-import { formatWeight, kgToDisplay } from '../domain/units';
+import { kgToDisplay, pillNumber } from '../domain/units';
 import { REST_SESSION_NOTE } from '../types';
 import type { Session } from '../types';
 import { BigCta, GhostCta, Dialog, Sheet, TrendArrow } from '../components/ui';
@@ -145,7 +145,7 @@ export function HomeScreen() {
       </div>
 
       {/* Stat strip */}
-      <div className="row gap-8">
+      <div className="stat-row">
         <div className="stat-pill" title="Any day with a logged workout or activity keeps the streak alive; scheduled rest days don't break it.">
           <div className="big">{streakDays > 0 ? `${streakDays}d` : '—'}</div>
           <div className="label-small muted" style={{ marginTop: 4 }}>{streakLost ? 'Streak lost' : 'Streak'}</div>
@@ -156,11 +156,11 @@ export function HomeScreen() {
         </div>
         <div className="stat-pill">
           <div className="big row" style={{ justifyContent: 'center', gap: 4 }}>
-            {bwLatest != null ? `${formatWeight(bwLatest, unit)} ${unit}` : '—'}
+            {bwLatest != null ? <span>{pillNumber(kgToDisplay(bwLatest, unit))}<span className="unit">{unit}</span></span> : '—'}
             {/* Neutral: whether gaining or losing is "good" depends on the user's goal. */}
             <TrendArrow prev={bwPrev} curr={bwLatest} goodDirection="none" />
           </div>
-          <div className="label-small muted" style={{ marginTop: 4 }}>Bodyweight</div>
+          <div className="label-small muted" style={{ marginTop: 4 }}>Weight</div>
         </div>
       </div>
 
@@ -187,7 +187,7 @@ export function HomeScreen() {
           <div className="row gap-8 mt-16">
             <button
               className="big-cta grow"
-              style={{ background: 'var(--on-accent)', color: 'var(--accent-primary)', minHeight: 52 }}
+              style={{ background: 'var(--on-accent)', color: 'var(--accent-primary)', minHeight: 52, fontSize: 'clamp(17px, 5.6vw, 22px)', whiteSpace: 'nowrap' }}
               onClick={() => navigate(`/workout/${activeSess.workoutDayId}`)}
             >
               Resume workout <ArrowRight size={20} />
@@ -214,7 +214,7 @@ export function HomeScreen() {
           <div className="row gap-8 mt-16">
             <button
               className="big-cta grow"
-              style={{ background: 'var(--on-accent)', color: 'var(--accent-primary)', minHeight: 52 }}
+              style={{ background: 'var(--on-accent)', color: 'var(--accent-primary)', minHeight: 52, fontSize: 'clamp(17px, 5.6vw, 22px)', whiteSpace: 'nowrap' }}
               onClick={() => navigate(upNextExs.length === 0 ? `/day/${upNext.id}` : `/workout/${upNext.id}`)}
             >
               {upNextExs.length === 0 ? 'Add exercises' : 'Start workout'} <ArrowRight size={20} />
@@ -265,13 +265,13 @@ export function HomeScreen() {
               return (
                 <div key={d.id} className="card row-between" style={{ padding: 14 }}>
                   <button
-                    className="row gap-12 grow"
+                    className="row gap-12 grow min0"
                     style={{ background: 'none', border: 'none', color: 'var(--fg)', textAlign: 'left', cursor: d.isRestDay ? 'default' : 'pointer' }}
                     disabled={d.isRestDay || editWeek}
                     onClick={() => !d.isRestDay && navigate(`/day/${d.id}`)}
                   >
-                    <span className="display-small" style={{ width: 34, color: 'var(--fg3)' }}>{d.dayNumber}</span>
-                    <div className="stack">
+                    <span className="display-small" style={{ flex: '0 0 34px', color: 'var(--fg3)' }}>{d.dayNumber}</span>
+                    <div className="stack min0">
                       <span className="title-small">{d.isRestDay ? 'REST' : d.name}</span>
                       <span className="body-small muted">{d.isRestDay ? 'Recovery day' : `${exs.length} exercises · ${sets} sets`}</span>
                     </div>
@@ -478,7 +478,7 @@ function LogActivityDialog({
           )}
         </>
       )}
-      <div className="row gap-8">
+      <div className="dialog-actions">
         <GhostCta onClick={onClose}>Cancel</GhostCta>
         <BigCta
           style={{ minHeight: 52 }}

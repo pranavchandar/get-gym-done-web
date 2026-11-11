@@ -125,8 +125,8 @@ export function ActiveWorkoutScreen() {
       {/* top chrome */}
       <div className="topbar">
         <button className="icon-btn bare" onClick={back} aria-label="Close"><X /></button>
-        <div className="grow center">
-          <div className="label-small muted">{day.name}</div>
+        <div className="grow center min0">
+          <div className="label-small muted ellipsis" title={day.name}>{day.name}</div>
           <div className="title-small">{currentIndex + 1} / {total}</div>
         </div>
         <button className="icon-btn bare" onClick={() => setMenuOpen(true)} aria-label="Menu"><More /></button>
@@ -176,7 +176,8 @@ export function ActiveWorkoutScreen() {
               toast(`Set ${setNumber} logged`);
             } else {
               startRestTimer(state.prefs.restSeconds);
-              toast(`Set ${setNumber} logged · ${state.prefs.restSeconds}s rest`);
+              // The full-screen timer already says it; a toast would sit on its buttons.
+              if (restCollapsed) toast(`Set ${setNumber} logged · ${state.prefs.restSeconds}s rest`);
             }
           }}
           isLastExercise={currentIndex === total - 1}
@@ -220,7 +221,7 @@ export function ActiveWorkoutScreen() {
               <div key={x.id} className="body-medium">{x.name} <span className="muted">· {x.info.doneCount}/{x.info.setCount} sets</span></div>
             ))}
           </div>
-          <div className="row gap-8 mt-20">
+          <div className="dialog-actions mt-20">
             <GhostCta onClick={() => setConfirmFinish(false)}>Keep training</GhostCta>
             <BigCta style={{ minHeight: 52 }} onClick={() => { setConfirmFinish(false); doFinish(); }}>Finish anyway</BigCta>
           </div>
@@ -374,13 +375,13 @@ function ExerciseContent({
       </div>
 
       {/* targets */}
-      <div className="card row gap-16">
+      <div className="card row wrap gap-16">
         <BodyMap levels={levelsForExercise(musclesOf(ex))} figure={state.prefs.bodyFigure} height={112} label={`muscles worked by ${ex?.name ?? 'this exercise'}`} />
-        <div className="stack grow">
+        <div className="stack min0" style={{ flex: '1 1 140px' }}>
           <div className="label-medium muted mb-8">TARGETS</div>
           <div className="row wrap gap-6">
-            {ex && <PillChip label={ex.primaryMuscle} variant="solid" />}
-            {ex?.secondaryMuscles.map((m) => <PillChip key={m} label={m} variant="outline" />)}
+            {ex && <PillChip label={ex.primaryMuscle} variant="solid" style={{ maxWidth: '100%' }} />}
+            {ex?.secondaryMuscles.map((m) => <PillChip key={m} label={m} variant="outline" style={{ maxWidth: '100%' }} />)}
           </div>
         </div>
       </div>
@@ -432,22 +433,22 @@ function ExerciseContent({
           const log = info.exLogs.find((l) => l.setNumber === n);
           const isActive = n === activeSetNumber;
           const done = doneNumbers.has(n);
-          return (
-            <div key={n} className={`set-row ${isActive ? 'active' : ''}`}>
-              <span className="label-medium muted" style={{ width: 46 }}>SET {n}</span>
-              {done && log ? (
-                <div className="row grow gap-8">
-                  <span className="title-small grow">
-                    {isBW
-                      ? log.weightKg === 0
-                        ? 'BW'
-                        : `BW +${formatWeight(log.weightKg, unit)} ${unit}`
-                      : `${formatWeight(log.weightKg, unit)} ${unit}`} · {log.reps} reps
-                  </span>
-                  <Check size={18} className="accent" />
+          const removeBtn = (
+            <button className="icon-btn bare" style={{ width: 28, height: 28, color: 'var(--fg3)' }} onClick={() => onRemoveSet(n, log?.id)} aria-label="remove set">
+              <MinusCircle size={18} />
+            </button>
+          );
+          if (isActive && !done) {
+            // Weight and reps each get a full line: side by side, two steppers don't fit
+            // a phone-width card (the reps "+" and the remove button ended up off-card).
+            return (
+              <div key={n} className="set-row active stack" style={{ alignItems: 'stretch', gap: 8 }}>
+                <div className="row-between">
+                  <span className="label-medium muted nowrap">SET {n}</span>
+                  {removeBtn}
                 </div>
-              ) : isActive ? (
-                <div className="row grow" style={{ justifyContent: 'space-around' }}>
+                <div className="row-between gap-12">
+                  <span className="label-small muted ellipsis min0">WEIGHT</span>
                   <Stepper
                     value={draft.weightDisplay}
                     step={step}
@@ -456,6 +457,9 @@ function ExerciseContent({
                     onValueTap={() => onOpenKeypad('weight')}
                     format={fmtSetWeight}
                   />
+                </div>
+                <div className="row-between gap-12">
+                  <span className="label-small muted ellipsis min0">REPS</span>
                   <Stepper
                     value={draft.reps}
                     step={1}
@@ -466,12 +470,27 @@ function ExerciseContent({
                     format={(v) => `${v} reps`}
                   />
                 </div>
+              </div>
+            );
+          }
+          return (
+            <div key={n} className="set-row">
+              <span className="label-medium muted nowrap" style={{ flex: '0 0 46px' }}>SET {n}</span>
+              {done && log ? (
+                <div className="row grow gap-8 min0">
+                  <span className="title-small grow min0">
+                    {isBW
+                      ? log.weightKg === 0
+                        ? 'BW'
+                        : `BW +${formatWeight(log.weightKg, unit)} ${unit}`
+                      : `${formatWeight(log.weightKg, unit)} ${unit}`} · {log.reps} reps
+                  </span>
+                  <Check size={18} className="accent" />
+                </div>
               ) : (
                 <span className="grow muted3">—</span>
               )}
-              <button className="icon-btn bare" style={{ width: 28, height: 28, color: 'var(--fg3)' }} onClick={() => onRemoveSet(n, log?.id)} aria-label="remove set">
-                <MinusCircle size={18} />
-              </button>
+              {removeBtn}
             </div>
           );
         })}
@@ -611,17 +630,17 @@ function RestOverlay({
   return (
     <div className="rest-overlay">
       {notifPrompt && (
-        <div className="card" style={{ maxWidth: 320, textAlign: 'left' }}>
+        <div className="card" style={{ width: 'calc(100% - 40px)', maxWidth: 320, textAlign: 'left' }}>
           <p className="body-medium" style={{ margin: '0 0 12px' }}>Get an alert when rest ends — even if you're in another tab.</p>
-          <div className="row gap-8">
+          <div className="dialog-actions">
             <button className="ghost-cta" onClick={dismiss}>Not now</button>
             <button className="big-cta" style={{ minHeight: 44 }} onClick={enable}>Enable</button>
           </div>
         </div>
       )}
-      <div className="row gap-24" style={{ alignItems: 'center' }}>
+      <div className="row gap-12" style={{ alignItems: 'center' }}>
         <button className="icon-btn" style={{ width: 56, height: 56 }} onClick={() => onAdjust(-30)}>−30s</button>
-        <svg width={200} height={200} viewBox="0 0 200 200">
+        <svg viewBox="0 0 200 200" style={{ width: 'min(200px, calc(100vw - 152px))', height: 'auto' }}>
           <circle cx="100" cy="100" r={R} fill="none" stroke="var(--surface3)" strokeWidth="10" />
           <circle
             cx="100" cy="100" r={R} fill="none" stroke="var(--accent-primary)" strokeWidth="10"

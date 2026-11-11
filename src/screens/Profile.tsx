@@ -16,7 +16,7 @@ import { ChevronDown, ChevronUp, Plus } from '../components/icons';
 import { ACCENT_PALETTES } from '../theme/palettes';
 import { MuscleBalanceCard } from '../components/MuscleBalance';
 import { OneRmSection } from '../components/OneRm';
-import { displayToKg } from '../domain/units';
+import { displayToKg, pillNumber } from '../domain/units';
 
 const RANGES: { key: string; label: string; days: number }[] = [
   { key: '1M', label: '1M', days: 30 },
@@ -144,7 +144,7 @@ export function ProfileScreen() {
     <div className="pad stack gap-20" style={{ paddingBottom: 32 }}>
       <ProfileHeader onEdit={() => setEditing(true)} />
 
-      <div className="row gap-8">
+      <div className="stat-row">
         <div className="stat-pill">
           <div className="big">{compactNumber(kgToDisplay(totalVolKg, unit))}</div>
           <div className="label-small muted" style={{ marginTop: 4 }}>{`Total volume (${unit})`}</div>
@@ -154,7 +154,7 @@ export function ProfileScreen() {
           <div className="label-small muted" style={{ marginTop: 4 }}>Sessions</div>
         </div>
       </div>
-      <div className="row gap-8">
+      <div className="stat-row">
         <div className="stat-pill">
           <div className="big">{streak > 0 ? `${streak}d` : '—'}</div>
           <div className="label-small muted" style={{ marginTop: 4 }}>Streak</div>
@@ -179,7 +179,7 @@ export function ProfileScreen() {
 
       {/* Body card */}
       <div className="card">
-        <div className="row-between mb-12">
+        <div className="row-between wrap gap-8 mb-12">
           <button className="row gap-8" style={{ background: 'none', border: 'none', color: 'var(--fg)' }} onClick={() => setBodyExpanded((e) => !e)}>
             <span className="headline-small">BODY</span>
             {bodyExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
@@ -189,10 +189,10 @@ export function ProfileScreen() {
             <button className="chip" onClick={() => setLoggingBody(true)}><Plus size={14} /> Log</button>
           </div>
         </div>
-        <div className="row gap-8">
-          <BodyStat label="Weight" value={weight.curr != null ? `${formatWeight(weight.curr, unit)} ${unit}` : '—'} prev={weight.prev} curr={weight.curr} goodDirection={goalKg == null || weight.prev == null ? 'none' : goalKg < weight.prev ? 'down' : 'up'} />
-          <BodyStat label="Body fat" value={fat.curr != null ? `${fat.curr}%` : '—'} prev={fat.prev} curr={fat.curr} goodDirection="down" />
-          <BodyStat label="Muscle" value={muscle.curr != null ? `${formatWeight(muscle.curr, unit)} ${unit}` : '—'} prev={muscle.prev} curr={muscle.curr} goodDirection="up" />
+        <div className="stat-row">
+          <BodyStat label="Weight" value={weight.curr != null ? pillNumber(kgToDisplay(weight.curr, unit)) : '—'} suffix={weight.curr != null ? unit : ''} prev={weight.prev} curr={weight.curr} goodDirection={goalKg == null || weight.prev == null ? 'none' : goalKg < weight.prev ? 'down' : 'up'} />
+          <BodyStat label="Fat" value={fat.curr != null ? pillNumber(fat.curr) : '—'} suffix={fat.curr != null ? '%' : ''} prev={fat.prev} curr={fat.curr} goodDirection="down" />
+          <BodyStat label="Muscle" value={muscle.curr != null ? pillNumber(kgToDisplay(muscle.curr, unit)) : '—'} suffix={muscle.curr != null ? unit : ''} prev={muscle.prev} curr={muscle.curr} goodDirection="up" />
         </div>
         {bodyExpanded && bm.length === 0 && (
           <div className="center muted body-small mt-16">No entries yet — tap + Log to record your first weigh-in.</div>
@@ -235,9 +235,9 @@ export function ProfileScreen() {
         const toGoal = goal != null ? Math.abs(curr - goal) : null;
         return (
           <div key={key} className="card">
-            <div className="row-between mb-8">
+            <div className="row-between gap-8 mb-8">
               <span className="title-small">{label}</span>
-              <span className="body-small muted">{display}{deltaPct != null ? ` · ${deltaPct >= 0 ? '+' : ''}${deltaPct.toFixed(1)}%` : ''}</span>
+              <span className="body-small muted nowrap">{display}{deltaPct != null ? ` · ${deltaPct >= 0 ? '+' : ''}${deltaPct.toFixed(1)}%` : ''}</span>
             </div>
             <Sparkline
               values={key === 'bodyFatPct' ? series : series.map((v) => kgToDisplay(v, unit))}
@@ -274,9 +274,9 @@ export function ProfileScreen() {
               const delta = first !== 0 ? ((last - first) / first) * 100 : 0;
               return (
                 <div key={item.exId} className="card">
-                  <div className="row-between mb-8">
-                    <span className="title-small">{ex?.name ?? 'Exercise'}</span>
-                    <span className="body-small muted">{formatWeight(last, unit)} {unit} · {delta >= 0 ? '+' : ''}{delta.toFixed(0)}%</span>
+                  <div className="row-between gap-8 mb-8">
+                    <span className="title-small min0">{ex?.name ?? 'Exercise'}</span>
+                    <span className="body-small muted nowrap">{formatWeight(last, unit)} {unit} · {delta >= 0 ? '+' : ''}{delta.toFixed(0)}%</span>
                   </div>
                   <DualSparkline
                     primary={item.weights.map((w) => kgToDisplay(w, unit))}
@@ -300,9 +300,9 @@ export function ProfileScreen() {
             if (!item) return null;
             return (
               <div className="card mb-12">
-                <div className="row-between mb-8">
-                  <span className="title-small">{state.exercises[item.exId]?.name}</span>
-                  <span className="body-small accent">{formatWeight(item.best, unit)} {unit}</span>
+                <div className="row-between gap-8 mb-8">
+                  <span className="title-small min0">{state.exercises[item.exId]?.name}</span>
+                  <span className="body-small accent nowrap">{formatWeight(item.best, unit)} {unit}</span>
                 </div>
                 <Sparkline values={item.curve.map((w) => kgToDisplay(w, unit))} width={320} height={44} />
               </div>
@@ -310,9 +310,9 @@ export function ProfileScreen() {
           })()}
           <div className="stack gap-8">
             {prList.map((item) => (
-              <button key={item.exId} className="card row-between" style={{ color: 'var(--fg)' }} onClick={() => setPrExercise((p) => (p === item.exId ? null : item.exId))}>
-                <span className="title-small">{state.exercises[item.exId]?.name ?? 'Exercise'}</span>
-                <span className="title-small accent">{formatWeight(item.best, unit)} {unit}</span>
+              <button key={item.exId} className="card row-between gap-12" style={{ color: 'var(--fg)', textAlign: 'left' }} onClick={() => setPrExercise((p) => (p === item.exId ? null : item.exId))}>
+                <span className="title-small min0">{state.exercises[item.exId]?.name ?? 'Exercise'}</span>
+                <span className="title-small accent nowrap">{formatWeight(item.best, unit)} {unit}</span>
               </button>
             ))}
           </div>
@@ -335,7 +335,7 @@ function ProfileHeader({ onEdit }: { onEdit: () => void }) {
   return (
     <div className="row gap-16">
       <Avatar name={name} color={state.prefs.color} photo={state.prefs.avatarPhoto} size={64} />
-      <div className="stack grow">
+      <div className="stack grow min0">
         <span className="headline-medium">{name}</span>
         <span className="body-small muted">{sessionCount} sessions logged</span>
       </div>
@@ -347,20 +347,22 @@ function ProfileHeader({ onEdit }: { onEdit: () => void }) {
 function BodyStat({
   label,
   value,
+  suffix,
   prev,
   curr,
   goodDirection,
 }: {
   label: string;
   value: string;
+  suffix?: string;
   prev: number | null;
   curr: number | null;
   goodDirection?: 'up' | 'down' | 'none';
 }) {
   return (
     <div className="stat-pill">
-      <div className="big row" style={{ justifyContent: 'center', gap: 4, fontSize: 22 }}>
-        {value}
+      <div className="big row" style={{ justifyContent: 'center', gap: 4, fontSize: 'clamp(17px, 5.4vw, 22px)' }}>
+        <span>{value}{suffix && <span className="unit">{suffix}</span>}</span>
         <TrendArrow prev={prev} curr={curr} goodDirection={goodDirection} />
       </div>
       <div className="label-small muted" style={{ marginTop: 4 }}>{label}</div>

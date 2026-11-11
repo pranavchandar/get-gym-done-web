@@ -19,6 +19,11 @@ function toPath(values: number[], w: number, h: number, pad = 3, extra: number[]
     .join(' ');
 }
 
+// Charts fill their container: `width` is only the drawing's coordinate width, and the
+// SVG stretches to the card (a fixed pixel width overflowed narrow phones). Strokes are
+// non-scaling so the stretch doesn't distort line weight or dash spacing.
+const FLUID = { display: 'block', width: '100%' } as const;
+
 export function Sparkline({
   values,
   width = 220,
@@ -37,7 +42,7 @@ export function Sparkline({
 }) {
   const extra = goal != null ? [goal] : [];
   const d = toPath(values, width, height, 3, extra);
-  if (!d) return <svg width={width} height={height} />;
+  if (!d) return <svg height={height} style={FLUID} />;
   const areaD =
     fill && values.length > 1 ? `${d} L${width - 3},${height - 3} L${3},${height - 3} Z` : '';
   // Same scale as toPath: the goal's y on the line's axis.
@@ -48,12 +53,12 @@ export function Sparkline({
     goalY = 3 + (1 - (goal - min) / range) * (height - 6);
   }
   return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
+    <svg height={height} style={FLUID} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
       {areaD && <path d={areaD} fill={color} opacity={0.12} />}
       {goalY != null && (
-        <line x1={3} x2={width - 3} y1={goalY} y2={goalY} stroke="var(--fg3)" strokeWidth={1.5} strokeDasharray="4 4" />
+        <line x1={3} x2={width - 3} y1={goalY} y2={goalY} stroke="var(--fg3)" strokeWidth={1.5} strokeDasharray="4 4" vectorEffect="non-scaling-stroke" />
       )}
-      <path d={d} fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      <path d={d} fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
     </svg>
   );
 }
@@ -72,12 +77,12 @@ export function DualSparkline({
   const dp = toPath(primary, width, height);
   const ds = toPath(secondary, width, height);
   return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
+    <svg height={height} style={FLUID} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
       {ds && (
-        <path d={ds} fill="none" stroke="var(--fg3)" strokeWidth={1.5} strokeDasharray="3 3" strokeLinecap="round" />
+        <path d={ds} fill="none" stroke="var(--fg3)" strokeWidth={1.5} strokeDasharray="3 3" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
       )}
       {dp && (
-        <path d={dp} fill="none" stroke="var(--accent-primary)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+        <path d={dp} fill="none" stroke="var(--accent-primary)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
       )}
     </svg>
   );

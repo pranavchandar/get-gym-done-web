@@ -80,9 +80,9 @@ export function DayOverviewScreen() {
                   const ex = state.exercises[de.exerciseId];
                   return (
                     <div key={de.id} className="card row gap-12">
-                      <span className="display-small" style={{ color: 'var(--fg3)', width: 28 }}>{i + 1}</span>
-                      <InitialTile name={ex?.name ?? '?'} />
-                      <div className="stack grow">
+                      <span className="display-small" style={{ color: 'var(--fg3)', flex: '0 0 28px' }}>{i + 1}</span>
+                      <span className="hide-narrow"><InitialTile name={ex?.name ?? '?'} /></span>
+                      <div className="stack grow min0">
                         <span className="title-small">{ex?.name ?? 'Exercise'}</span>
                         <span className="body-small muted">{ex?.primaryMuscle ?? ''}</span>
                       </div>
@@ -133,8 +133,8 @@ export function DayOverviewScreen() {
             {allDays.map((d) => (
               <button
                 key={d.id}
-                className="card row-between"
-                style={{ color: 'var(--fg)' }}
+                className="card row-between gap-12"
+                style={{ color: 'var(--fg)', textAlign: 'left' }}
                 onClick={() => { setSwitching(false); navigate(`/day/${d.id}`); }}
               >
                 <span className="title-small">Day {d.dayNumber} · {d.isRestDay ? 'Rest' : d.name}</span>
@@ -184,15 +184,15 @@ function EditExercisesSheet({ dayId, onClose }: { dayId: string; onClose: () => 
           const ex = state.exercises[r.exerciseId];
           return (
             <div key={i} className="card-2 card" style={{ borderRadius: 12 }}>
-              <div className="row-between mb-8">
-                <span className="title-small">{ex?.name ?? 'Exercise'}</span>
+              <div className="row-between gap-8 mb-8">
+                <span className="title-small min0">{ex?.name ?? 'Exercise'}</span>
                 <div className="row gap-4">
                   <button className="icon-btn bare" disabled={i === 0} onClick={() => move(i, -1)}><ChevronUp size={16} /></button>
                   <button className="icon-btn bare" disabled={i === rows.length - 1} onClick={() => move(i, 1)}><ChevronDown size={16} /></button>
                   <button className="icon-btn bare" style={{ color: 'var(--coral)' }} onClick={() => setRows(rows.filter((_, k) => k !== i))}><Trash size={16} /></button>
                 </div>
               </div>
-              <div className="row-between">
+              <div className="rx-grid">
                 <div className="stack gap-4" style={{ alignItems: 'center' }}>
                   <span className="label-small muted">Sets</span>
                   <Stepper mini value={r.sets} min={1} max={10} onChange={(v) => patch(setRows, i, { sets: Math.max(1, Math.min(10, v)) })} />

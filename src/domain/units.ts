@@ -40,6 +40,11 @@ export function formatWeight(kg: number, unit: Units): string {
   return String(parseFloat(v.toFixed(2)));
 }
 
+/** One decimal at most: a stat pill is a third of a phone's width. */
+export function pillNumber(v: number): string {
+  return String(Math.round(v * 10) / 10);
+}
+
 export function unitLabel(unit: Units): string {
   return unit;
 }

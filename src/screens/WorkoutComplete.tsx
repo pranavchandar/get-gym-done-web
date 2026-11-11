@@ -144,11 +144,11 @@ export function WorkoutCompleteScreen() {
             <div className="label-medium accent mb-8">NEW ESTIMATED 1RM</div>
             <div className="stack gap-6">
               {oneRmRecords.map((r) => (
-                <div key={r.exId} className="row-between body-medium">
-                  <span>{state.exercises[r.exId]?.name ?? 'Exercise'}</span>
-                  <span className="title-small">
-                    {formatWeight(r.est, unit)} {unit}
-                    {r.prev != null && <span className="body-small muted"> · was {formatWeight(r.prev, unit)}</span>}
+                <div key={r.exId} className="row-between gap-12 body-medium">
+                  <span className="min0">{state.exercises[r.exId]?.name ?? 'Exercise'}</span>
+                  <span className="stack nowrap" style={{ alignItems: 'flex-end' }}>
+                    <span className="title-small">{formatWeight(r.est, unit)} {unit}</span>
+                    {r.prev != null && <span className="body-small muted">was {formatWeight(r.prev, unit)}</span>}
                   </span>
                 </div>
               ))}
