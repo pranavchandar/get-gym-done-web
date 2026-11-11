@@ -285,11 +285,14 @@ textarea.field { resize: vertical; min-height: 60px; }
 .stepper .value {
   min-width: 56px; text-align: center; font-weight: 700; font-size: 18px;
   background: none; border: none; color: var(--fg); white-space: nowrap; flex: none;
+  /* `.stepper button` above sizes the ± buttons; the value must size to its text, or
+     "BW +20 kg" spills over the buttons beside it. */
+  width: auto; padding: 0 2px;
 }
 @media (max-width: 360px) { .stepper:not(.mini) .value { font-size: 16px; } }
 .stepper.mini { gap: 6px; }
 .stepper.mini button { width: 26px; height: 26px; font-size: 15px; border-radius: 8px; }
-.stepper.mini .value { min-width: 28px; font-size: 15px; }
+.stepper.mini .value { min-width: 28px; font-size: 15px; width: auto; }
 /* Sets / rep low / rep high: three columns where they fit, wrapping on narrow phones. */
 .rx-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(92px, 1fr)); gap: 10px 6px; }
 .rx-grid > * { align-items: center; }
