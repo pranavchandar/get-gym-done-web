@@ -159,7 +159,7 @@ export function SettingsScreen() {
         <Dialog onClose={() => setImportData(null)}>
           <div className="headline-small mb-8">Import backup?</div>
           <p className="body-medium muted">This replaces ALL current data with the contents of the file. This cannot be undone.</p>
-          <div className="row gap-8 mt-20">
+          <div className="dialog-actions mt-20">
             <GhostCta onClick={() => setImportData(null)}>Cancel</GhostCta>
             <BigCta style={{ minHeight: 52 }} onClick={() => { applyBackup(importData); setImportData(null); toast('Data imported'); }}>Replace</BigCta>
           </div>
@@ -172,7 +172,7 @@ export function SettingsScreen() {
         <Dialog onClose={() => setPullConfirm(null)}>
           <div className="headline-small mb-8">Pull from cloud?</div>
           <p className="body-medium muted">This replaces ALL current data with the cloud backup. This cannot be undone.</p>
-          <div className="row gap-8 mt-20">
+          <div className="dialog-actions mt-20">
             <GhostCta onClick={() => setPullConfirm(null)}>Cancel</GhostCta>
             <BigCta style={{ minHeight: 52 }} onClick={() => {
               try { applyBackup(parseBackup(pullConfirm)); toast('Pulled from cloud'); }
@@ -187,7 +187,7 @@ export function SettingsScreen() {
         <Dialog onClose={() => setResetConfirm(false)}>
           <div className="headline-small mb-8">RESET ROUTINE?</div>
           <p className="body-medium muted">Picking a new split will reset your current routine. Any customizations to it will be lost.</p>
-          <div className="row gap-8 mt-20">
+          <div className="dialog-actions mt-20">
             <GhostCta onClick={() => setResetConfirm(false)}>Cancel</GhostCta>
             <BigCta style={{ minHeight: 52 }} onClick={() => { setResetConfirm(false); navigate('/pick-split'); }}>Reset</BigCta>
           </div>
@@ -245,7 +245,7 @@ function CsvImportDialog({ parsed, library, onClose }: { parsed: ParsedImport; l
           </p>
         </div>
       )}
-      <div className="row gap-8 mt-20">
+      <div className="dialog-actions mt-20">
         <GhostCta onClick={onClose}>Cancel</GhostCta>
         {plan.sessions.length > 0 && (
           <BigCta

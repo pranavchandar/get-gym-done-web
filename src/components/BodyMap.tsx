@@ -33,7 +33,8 @@ const OPACITY = [0, 0.28, 0.5, 0.75, 1];
 function Figure({ view, levels, height }: { view: View; levels: MuscleLevels; height: number }) {
   const [, , w, h] = view.vb.split(' ').map(Number);
   return (
-    <svg height={height} width={(height * w) / h} viewBox={view.vb} aria-hidden="true">
+    // Unlike icons, the figures may shrink (keeping their aspect) when a card is narrow.
+    <svg height={height} width={(height * w) / h} viewBox={view.vb} aria-hidden="true" style={{ flexShrink: 1, minWidth: 0 }}>
       {Object.entries(view.p).map(([slug, paths]) => {
         const lv = INERT.has(slug) ? 0 : levels[slug as keyof MuscleLevels] ?? 0;
         return (

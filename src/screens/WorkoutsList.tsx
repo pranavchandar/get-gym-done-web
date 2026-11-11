@@ -33,19 +33,20 @@ export function WorkoutsListScreen() {
 
   return (
     <div className="pad stack gap-12" style={{ paddingBottom: 32 }}>
-      <div className="row-between">
-        <div>
+      {/* Actions share the eyebrow's line so a long routine name gets the full width. */}
+      <div>
+        <div className="row-between">
           <div className="label-medium muted">ROUTINE</div>
-          <h1 className="display-small" style={{ margin: '6px 0 0' }}>{split.name}</h1>
+          <div className="row gap-8">
+            {!edit && (
+              <button className="chip" onClick={() => setExporting(true)} aria-label="Export routine">
+                <Download size={14} /> Export
+              </button>
+            )}
+            <button className="text-link" onClick={() => setEdit((e) => !e)}>{edit ? 'Done' : 'Edit'}</button>
+          </div>
         </div>
-        <div className="row gap-8">
-          {!edit && (
-            <button className="chip" onClick={() => setExporting(true)} aria-label="Export routine">
-              <Download size={14} /> Export
-            </button>
-          )}
-          <button className="text-link" onClick={() => setEdit((e) => !e)}>{edit ? 'Done' : 'Edit'}</button>
-        </div>
+        <h1 className="display-small" style={{ margin: '6px 0 0' }}>{split.name}</h1>
       </div>
 
       {days.map((d, i) => {
@@ -58,27 +59,27 @@ export function WorkoutsListScreen() {
           <div key={d.id} className="card">
             <div className="row-between">
               <button
-                className="row gap-12 grow"
+                className="row gap-12 grow min0"
                 style={{ background: 'none', border: 'none', color: 'var(--fg)', textAlign: 'left', cursor: d.isRestDay || edit ? 'default' : 'pointer' }}
                 disabled={d.isRestDay || edit}
                 onClick={() => !d.isRestDay && navigate(`/day/${d.id}`)}
               >
-                <span className="display-small" style={{ width: 34, color: 'var(--fg3)' }}>{d.dayNumber}</span>
-                <div className="stack grow">
+                <span className="display-small" style={{ flex: '0 0 34px', color: 'var(--fg3)' }}>{d.dayNumber}</span>
+                <div className="stack grow min0">
                   <div className="row gap-8">
                     <span className="title-small">{d.isRestDay ? 'REST' : d.name}</span>
-                    {done > 0 && <span className="pill pill-solid" style={{ padding: '4px 8px' }}>{done}×</span>}
+                    {done > 0 && !edit && <span className="pill pill-solid" style={{ padding: '4px 8px' }}>{done}×</span>}
                   </div>
                   <span className="body-small muted">
-                    {d.isRestDay ? 'Recovery day — rest, eat, sleep' : `${exs.length} exercises · ${sets} sets · ${done} completed`}
+                    {d.isRestDay ? (edit ? 'Recovery day' : 'Recovery day — rest, eat, sleep') : edit ? `${exs.length} exercises` : `${exs.length} exercises · ${sets} sets · ${done} completed`}
                   </span>
                 </div>
               </button>
               {edit && (
-                <div className="row gap-4">
-                  <button className="icon-btn bare" disabled={i === 0} onClick={() => moveDay(split.id, d.dayNumber, -1)}><ChevronUp size={18} /></button>
-                  <button className="icon-btn bare" disabled={i === days.length - 1} onClick={() => moveDay(split.id, d.dayNumber, 1)}><ChevronDown size={18} /></button>
-                  <button className="icon-btn bare" style={{ color: 'var(--coral)' }} onClick={() => { if (!removeDay(d.id)) toast("Can't remove — this day has logged workouts."); }}><Trash size={16} /></button>
+                <div className="row" style={{ gap: 2 }}>
+                  <button className="icon-btn bare" style={{ width: 34 }} disabled={i === 0} onClick={() => moveDay(split.id, d.dayNumber, -1)} aria-label="Move day up"><ChevronUp size={18} /></button>
+                  <button className="icon-btn bare" style={{ width: 34 }} disabled={i === days.length - 1} onClick={() => moveDay(split.id, d.dayNumber, 1)} aria-label="Move day down"><ChevronDown size={18} /></button>
+                  <button className="icon-btn bare" style={{ width: 34, color: 'var(--coral)' }} onClick={() => { if (!removeDay(d.id)) toast("Can't remove — this day has logged workouts."); }} aria-label="Remove day"><Trash size={16} /></button>
                 </div>
               )}
             </div>

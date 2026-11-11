@@ -74,9 +74,9 @@ export function OneRmSection() {
               onClick={() => setOpen((o) => (o === r.exId ? null : r.exId))}
               aria-expanded={open === r.exId}
             >
-              <div className="row-between" style={{ width: '100%' }}>
-                <span className="title-small">{exercises[r.exId]?.name ?? 'Exercise'}</span>
-                <span className="title-small accent">{formatWeight(r.best.est, unit)} {unit}</span>
+              <div className="row-between gap-12" style={{ width: '100%' }}>
+                <span className="title-small min0">{exercises[r.exId]?.name ?? 'Exercise'}</span>
+                <span className="title-small accent nowrap">{formatWeight(r.best.est, unit)} {unit}</span>
               </div>
               <span className="body-small muted">
                 from {formatWeight(r.best.weightKg, unit)} {unit} × {r.best.reps} · {formatDateShort(r.best.at)}

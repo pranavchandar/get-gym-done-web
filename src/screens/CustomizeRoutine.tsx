@@ -161,8 +161,8 @@ export function CustomizeRoutineScreen() {
                   const ex = state.exercises[row.exerciseId];
                   return (
                     <div key={ri} className="card-2 card" style={{ borderRadius: 12 }}>
-                      <div className="row-between mb-8">
-                        <span className="title-small">{ex?.name ?? 'Exercise'}</span>
+                      <div className="row-between gap-8 mb-8">
+                        <span className="title-small min0">{ex?.name ?? 'Exercise'}</span>
                         <button
                           className="icon-btn bare"
                           style={{ color: 'var(--fg2)', width: 28, height: 28 }}
@@ -171,7 +171,7 @@ export function CustomizeRoutineScreen() {
                           <Trash size={16} />
                         </button>
                       </div>
-                      <div className="row-between">
+                      <div className="rx-grid">
                         <div className="stack gap-4" style={{ alignItems: 'center' }}>
                           <span className="label-small muted">Sets</span>
                           <Stepper mini value={row.sets} min={1} max={10}
