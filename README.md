@@ -9,33 +9,53 @@ no account required. It installs as a PWA and is designed phone-first.
 
 ## What it does
 
-- **Onboarding** — pick a preset split (Push Pull Legs, Upper/Lower, PHUL, Bro,
-  Arnold, Glute Focused, Full Body) or build a custom routine day-by-day.
-- **Today** — streak, weekly progress and bodyweight at a glance; an "up next" card
-  that skips scheduled rest days; a month calendar; an editable weekly schedule;
-  log non-lifting activities; automatic rest-day logging.
-- **Active workout** — per-set weight/rep steppers with a numeric keypad, a wall-clock
-  rest timer (with ±30s / skip, beep + vibrate + notification), progressive-overload
-  "time to add weight" prompts, and add/replace/remove exercise on the fly. The whole
-  in-progress session (including the running rest timer) survives a page reload. An
-  anatomical body map shows what the exercise targets, the best estimated 1RM sits
-  next to the prescription, and the **screen stays awake** for the whole session
+- **Onboarding** — choose lbs or kg (guessed from your region), then pick a preset
+  split (Push Pull Legs, Upper/Lower, PHUL, Bro, Arnold, Glute Focused, Full Body —
+  each with a line on who it suits) or build a custom routine day-by-day.
+- **Today** — a **weekly streak** (weeks in a row that hit your target of training
+  days, so rest days never break it), this week's count, and bodyweight at a glance (tap
+  it to weigh in); an "up next" card; a month calendar that shows routine workouts,
+  imported workouts and activities; an editable weekly schedule (reorder, copy or remove
+  days); log activities with duration, distance and pace. Rest days are never logged for
+  you: a rotation rest day shows only the day after the workout before it, and optional
+  fixed training weekdays (Settings → Schedule) make every other day a rest day.
+- **History** — the Workouts tab lists every session; open one to fix a set's weight or
+  reps, add a forgotten set, change its type, edit the note, or delete the session.
+  Activities can be edited and deleted the same way.
+- **Active workout** — per-set weight/rep steppers with a numeric keypad, set 1
+  pre-filled from last time and later sets from what you just logged, a "last time" line,
+  plates per side for barbell lifts, and a wall-clock rest timer (±30s / skip, beep +
+  vibrate + notification; per-exercise rest times; no timer after warm-ups). Sets can be
+  tagged **warm-up / top set / back-off** (warm-ups never count toward volume, records or
+  suggestions), with optional **reps in reserve**. Exercise types beyond weight × reps:
+  **timed holds** with a stopwatch (planks, carries), **resistance bands** by level, and
+  **bodyweight moves with added or assisted load**. Added and removed sets, the running
+  timer and the whole session survive leaving the screen or a reload. Exercise notes
+  (seat height, grip) show every time; a workout note is saved with the session.
+  Replacing an exercise can update the routine for good. The **screen stays awake**
   (Screen Wake Lock API; switchable in Settings).
+- **Progression** — "time to add weight" when *every* working set at your top weight
+  reached the top of the rep range, in a jump that fits the equipment (dumbbell pairs,
+  machine stacks, 10 lb on lower-body barbell lifts); "ease back in" about 10% lighter
+  after two weeks away; "Not today" snoozes it.
 - **Exercise library** — on top of the built-in catalog, **1,324 exercises** with
   step-by-step instructions, searchable and filterable by body part and equipment (the
   equipment chips only offer combinations that have results). Picking one copies it
   into your catalog, so it behaves like any other exercise.
-- **Profile** — total volume, body metrics with sparklines and an optional **goal
-  weight** (dashed line; the trend arrow goes green when you move toward it),
-  per-exercise progression, an 18-week consistency heatmap, a personal-records list, a
-  **muscle-balance map** (front/back, male or female figure) shaded by sets per muscle
-  over a week / month / all time that names the muscles you *haven't* trained, and an
-  **estimated 1RM** per exercise (Epley, from your best set of ≤12 reps — it names the
-  set) with a trend line and a 1RM / rep-max calculator.
-- **Workout complete** — the muscles you just hit, plus any new estimated-1RM records.
-- **Settings** — theme (system/light/dark), 10 accent palettes, kg/lbs, keep-awake,
-  body-map figure, reset routine, cloud sync, JSON export/import, and importing history
-  from **Strong, Hevy or FitNotes**.
+- **Profile** — total volume, body metrics on **dated charts** (bodyweight with a 7-day
+  average; changes in your unit, body fat in percentage points) and an optional **goal
+  weight**, per-exercise progression charts, an 18-week consistency heatmap, personal
+  records (heaviest, most reps, longest hold, estimated 1RM), a **muscle-balance map**
+  with **working sets per muscle per week**, and an **estimated 1RM** per exercise with
+  a 1RM / rep-max calculator. Bodyweight moves count your bodyweight (from the nearest
+  weigh-in) in load, volume, records and 1RM.
+- **Workout complete** — duration, named records (no "records" the first time you do
+  an exercise), volume change compared only on the exercises both sessions share, the
+  muscles you hit, a note, and a **share card** (an image for the share sheet).
+- **Settings** — theme, text size, 10 accent palettes, kg/lbs, keep-awake, show or hide
+  estimated 1RMs, reps-in-reserve logging, body-map figure, training weekdays and weekly
+  target, reset routine, cloud sync, backups, history import from **Strong, Hevy or
+  FitNotes**, a history CSV, and a **PDF progress report** for a coach or physio.
 
 ## Data storage
 
@@ -48,9 +68,11 @@ are epoch milliseconds. Seed data (splits + exercise catalog) is loaded on first
 Because storage is per-browser, clearing site data or switching browsers/devices
 starts fresh — use **Export** or **Cloud Sync** to move your data.
 
-The goal weight, body-map figure and keep-awake switch are web-only settings: the
-shared `BackupFile` format has no field for them, so they stay in this browser and are
-kept as-is when you import a backup.
+Web-only data — settings such as the goal weight, text size and training weekdays, and
+fields such as set types, band levels, timed holds, distances, exercise notes and rest
+times — goes in the JSON backup (settings in a `web` section, fields on their records).
+The **Android backup** leaves all of it out, so the Android app only meets fields it
+knows; restoring an Android file keeps this browser's web-only settings.
 
 ## Running locally
 
@@ -87,12 +109,15 @@ The token never leaves your browser except in direct requests to `api.github.com
 **Import history from Strong, Hevy or FitNotes** reads those apps' CSV exports; the
 format is detected from the header row.
 
-- Every workout becomes a completed session with its sets, so stats, PRs, estimated
-  1RM, the muscle map and "last time" weight prefills all pick it up. Imported sessions
-  aren't tied to a routine day, so your split rotation doesn't move.
+- Every workout becomes a completed session with its sets, so stats, records, estimated
+  1RM, the muscle map, the calendar, the weekly streak and "last time" prefills all pick
+  it up. Imported sessions aren't tied to a routine day, so your split rotation doesn't
+  move.
 - Exercise names are matched against your catalog and the exercise library
-  ("Bench Press (Barbell)" finds "Barbell Bench Press"); anything unrecognised becomes a
-  custom exercise, so no sets are dropped. Warm-up sets, rest-timer rows and rows
+  ("Bench Press (Barbell)" finds "Barbell Bench Press", "Bicep Curl (Dumbbell)" finds
+  "Dumbbell Curl", "Overhead Press (Dumbbell)" finds "Dumbbell Shoulder Press");
+  anything unrecognised becomes a custom exercise with its muscle and equipment guessed
+  from the name, so no sets are dropped. Warm-up sets, rest-timer rows and rows
   without reps (cardio, timed holds) are skipped and counted in the preview.
 - When a file doesn't record the weight unit (older Strong exports), the preview asks
   for it. Importing merges into your data; re-importing the same file adds nothing twice.
@@ -113,20 +138,23 @@ All four are generated in-browser with no dependencies: `src/export/zip.ts` is a
 minimal STORE-only ZIP writer (the `.xlsx` container) and `src/export/pdf.ts` emits
 PDF 1.4 using the standard Helvetica fonts, so nothing is uploaded and no CDN is
 involved. For a full data backup (sessions, sets, body metrics) use Settings →
-Export to JSON instead.
+Back up to JSON instead; Settings → Export history (CSV) gives every logged set as a
+spreadsheet, and the progress report is a printable PDF of the last 12 weeks.
 
 ## Moving data between the Android app and the web app
 
 Export/import use the **same `BackupFile` v2 JSON** as the Android app, so data moves
 both ways:
 
-- **Android → Web:** export a backup from the Android app, then Settings → **Import
+- **Android → Web:** export a backup from the Android app, then Settings → **Restore
   from JSON** here (full replace after confirm). Android's `userPrefs` fields
   (`socialHandle`, `socialColor`, `avatarPhoto`) are mapped onto the web profile.
-- **Web → Android:** Settings → **Export to JSON** (downloads `gymdone-backup.json`),
-  then import it in the Android app. The web export writes Android's `userPrefs` field
-  names so round-trips are lossless. `exerciseMedia` is exported as `[]` and ignored on
-  import (media uploads are out of scope on the web).
+- **Web → Android:** Settings → **Backup for the Android app** (downloads
+  `gymdone-android-backup-<date>.json`), then import it in the Android app. It writes
+  only the fields the Android schema has and Android's `userPrefs` field names.
+  `exerciseMedia` is exported as `[]` and ignored on import (media uploads are out of
+  scope on the web). **Back up to JSON** (`gymdone-backup-<date>.json`) is the complete
+  web backup, web-only data included.
 
 ## Third-party data
 
