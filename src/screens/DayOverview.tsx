@@ -219,7 +219,8 @@ function EditExercisesSheet({ dayId, onClose }: { dayId: string; onClose: () => 
         <ExercisePicker
           onClose={() => setPicking(false)}
           onPick={(id) => {
-            const ex = state.exercises[id];
+            // Live store, not this render's snapshot: a just-created custom exercise isn't in it yet.
+            const ex = useStore.getState().exercises[id];
             setRows((prev) => [...prev, { exerciseId: id, sets: ex?.defaultSets ?? 3, repsLow: ex?.defaultRepsLow ?? 8, repsHigh: ex?.defaultRepsHigh ?? 12 }]);
           }}
         />

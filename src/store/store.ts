@@ -20,6 +20,12 @@ import { epochDayLocal } from '../domain/dates';
 
 export const STORAGE_KEY = 'get-gym-done:v1';
 
+/**
+ * A workout finished this long after its last set was left open, not trained until now:
+ * it is dated at its last set. An empty workout this old is a fresh start when reopened.
+ */
+const LATE_FINISH_MS = 3 * 60 * 60 * 1000;
+
 export function uid(): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
   return 'id-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -104,6 +110,8 @@ export interface StoreActions {
   adjustRestTimer: (delta: number) => void;
   clearRestTimer: () => void;
   finishWorkout: () => string | null;
+  /** Throw away the workout in progress and every set logged in it. */
+  discardWorkout: () => void;
   // body & activity
   logBodyMetric: (m: { bodyweightKg?: number | null; bodyFatPct?: number | null; muscleMassKg?: number | null }) => void;
   logActivity: (a: {
@@ -375,22 +383,37 @@ export const useStore = create<Store>()(
 
       startOrResumeSession: (workoutDayId) => {
         const s = get();
+        const now = Date.now();
+        const sessions = { ...s.sessions };
+        const isStaleEmpty = (id: string) =>
+          !setLogsOfSession(s, id).length && now - (sessions[id]?.startedAt ?? now) > LATE_FINISH_MS;
         if (s.activeSession && s.activeSession.workoutDayId === workoutDayId) {
+          const cur = sessions[s.activeSession.sessionId];
+          if (cur && isStaleEmpty(cur.id)) set({ sessions: { ...sessions, [cur.id]: { ...cur, startedAt: now } } });
           return s.activeSession.sessionId;
         }
-        let session = Object.values(s.sessions).find(
+        // Switching away from a workout nothing was logged in: drop it rather than leave
+        // an open session behind that a later visit to that day would quietly resume.
+        if (s.activeSession) {
+          const prevId = s.activeSession.sessionId;
+          if (!setLogsOfSession(s, prevId).length && sessions[prevId]?.completedAt == null) delete sessions[prevId];
+        }
+        let session = Object.values(sessions).find(
           (se) => se.workoutDayId === workoutDayId && se.completedAt == null,
         );
-        const sessions = { ...s.sessions };
         let sessionId: string;
         if (session) {
           sessionId = session.id;
+          if (isStaleEmpty(sessionId)) {
+            session = { ...session, startedAt: now };
+            sessions[sessionId] = session;
+          }
         } else {
           sessionId = uid();
           session = {
             id: sessionId,
             workoutDayId,
-            startedAt: Date.now(),
+            startedAt: now,
             completedAt: null,
             notes: null,
           };
@@ -589,12 +612,27 @@ export const useStore = create<Store>()(
           set({ activeSession: null });
           return null;
         }
+        const now = Date.now();
+        const lastSetAt = Math.max(0, ...setLogsOfSession(s, sessionId).map((l) => l.completedAt));
+        // Left open and finished later (a phone call, a night shift): date it by when it was done.
+        const completedAt = lastSetAt > 0 && now - lastSetAt > LATE_FINISH_MS ? lastSetAt : now;
         set({
-          sessions: { ...s.sessions, [sessionId]: { ...session, completedAt: Date.now() } },
+          sessions: { ...s.sessions, [sessionId]: { ...session, completedAt } },
           activeSession: null,
         });
         return sessionId;
       },
+
+      discardWorkout: () =>
+        set((s) => {
+          if (!s.activeSession) return {};
+          const id = s.activeSession.sessionId;
+          const sessions = { ...s.sessions };
+          delete sessions[id];
+          const setLogs = { ...s.setLogs };
+          for (const l of Object.values(s.setLogs)) if (l.sessionId === id) delete setLogs[l.id];
+          return { sessions, setLogs, activeSession: null };
+        }),
 
       logBodyMetric: (m) => {
         const bw = m.bodyweightKg ?? null;

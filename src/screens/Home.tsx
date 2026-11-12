@@ -23,7 +23,7 @@ import { REST_SESSION_NOTE } from '../types';
 import type { Session } from '../types';
 import { BigCta, GhostCta, Dialog, Sheet, TrendArrow } from '../components/ui';
 import { Confetti } from '../components/Confetti';
-import { List, ArrowRight, Bed, Check, ChevronRight, ChevronUp, ChevronDown, Plus, Trash, Activity } from '../components/icons';
+import { List, ArrowRight, Bed, Check, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Plus, Trash, Activity } from '../components/icons';
 import { toast } from '../components/toast';
 
 const ACTIVITY_CHIPS = ['Running', 'Walking', 'Cycling', 'Swimming', 'Pickleball', 'Tennis', 'Table Tennis', 'Basketball', 'Soccer', 'Yoga', 'Hiking'];
@@ -94,7 +94,6 @@ export function HomeScreen() {
   }, [state.sessions, state.workoutDays, days, today]);
   const sessionsThisWeek = weekDoneDayNumbers.size;
 
-  const sessionCount = sessionsArr.filter((s) => s.completedAt != null && s.notes !== REST_SESSION_NOTE).length;
 
   const bm = useMemo(() => bodyMetricsSorted(state).filter((r) => r.bodyweightKg != null), [state]);
   const bwLatest = bm.length ? bm[bm.length - 1].bodyweightKg : null;
@@ -243,7 +242,7 @@ export function HomeScreen() {
       </button>
 
       {/* Calendar */}
-      <CalendarCard completedMap={completedMap} activityMap={activityMap} restDays={restDayMap} today={today} sessionCount={sessionCount}
+      <CalendarCard completedMap={completedMap} activityMap={activityMap} restDays={restDayMap} today={today}
         canLogToday={!loggedToday && !todayIsRest && !!upNext}
         onToday={() => upNext && navigate(`/day/${upNext.id}`)}
         sessionsByDay={sessionsByDay}
@@ -333,7 +332,6 @@ function CalendarCard({
   activityMap,
   restDays,
   today,
-  sessionCount,
   canLogToday,
   onToday,
   sessionsByDay,
@@ -343,16 +341,29 @@ function CalendarCard({
   activityMap: Map<number, string>;
   restDays: Set<number>;
   today: number;
-  sessionCount: number;
   canLogToday: boolean;
   onToday: () => void;
   sessionsByDay: Map<number, Session[]>;
   onDaySessions: (ed: number, label: string) => void;
 }) {
+  // 0 = this month, -1 = last month, … Paging stops at the month of the first session.
+  const [offset, setOffset] = useState(0);
   const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
-  const first = new Date(year, month, 1);
+  const view = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+  const year = view.getFullYear();
+  const month = view.getMonth();
+  const first = view;
+  const firstEd = Math.min(...sessionsByDay.keys());
+  const earliest = Number.isFinite(firstEd) ? new Date(firstEd * 86400000) : now;
+  const canGoBack = year * 12 + month > earliest.getUTCFullYear() * 12 + earliest.getUTCMonth();
+  // Sessions in the month on screen (rest-day logs aren't sessions), not the all-time total.
+  let monthSessions = 0;
+  for (const [ed, list] of sessionsByDay) {
+    const d = new Date(ed * 86400000);
+    if (d.getUTCFullYear() === year && d.getUTCMonth() === month) {
+      monthSessions += list.filter((s) => s.notes !== REST_SESSION_NOTE).length;
+    }
+  }
   const startWeekday = first.getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
@@ -362,9 +373,22 @@ function CalendarCard({
 
   return (
     <div className="card">
-      <div className="row-between mb-12">
-        <span className="title-medium">{MONTH_NAMES[month]} {year}</span>
-        <span className="body-small muted">{sessionCount} session{sessionCount === 1 ? '' : 's'}</span>
+      <div className="row-between gap-8 mb-12">
+        <div className="stack min0">
+          <span className="title-medium">{MONTH_NAMES[month]} {year}</span>
+          <span className="body-small muted">{monthSessions} session{monthSessions === 1 ? '' : 's'} this month</span>
+        </div>
+        <div className="row gap-4">
+          <button className="icon-btn" disabled={!canGoBack} style={{ opacity: canGoBack ? 1 : 0.35 }} onClick={() => setOffset((o) => o - 1)} aria-label="Previous month">
+            <ChevronLeft size={18} />
+          </button>
+          <button className="icon-btn" disabled={offset === 0} style={{ opacity: offset === 0 ? 0.35 : 1 }} onClick={() => setOffset((o) => Math.min(0, o + 1))} aria-label="Next month">
+            <ChevronRight size={18} />
+          </button>
+        </div>
+      </div>
+      <div className="cal-grid cal-weekdays" aria-hidden="true">
+        {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((w, i) => <span key={i}>{w}</span>)}
       </div>
       <div className="cal-grid">
         {cells.map((d, i) => {
@@ -434,6 +458,12 @@ function CalendarCard({
   );
 }
 
+/** Minutes as typed: digits and one decimal place ("30.5"), never a dropped point ("305"). */
+function cleanMinutes(raw: string): string {
+  const [whole, ...rest] = raw.replace(/[^\d.]/g, '').split('.');
+  return rest.length ? `${whole.slice(0, 4)}.${rest.join('').slice(0, 1)}` : whole.slice(0, 4);
+}
+
 function LogActivityDialog({
   hasNextDay,
   nextDayLabel,
@@ -462,9 +492,9 @@ function LogActivityDialog({
       <input
         className="field mb-12"
         placeholder="Duration (min)"
-        inputMode="numeric"
+        inputMode="decimal"
         value={duration}
-        onChange={(e) => setDuration(e.target.value.replace(/\D/g, '').slice(0, 4))}
+        onChange={(e) => setDuration(cleanMinutes(e.target.value))}
       />
       <textarea className="field mb-12" placeholder="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
       {hasNextDay && (
@@ -485,7 +515,7 @@ function LogActivityDialog({
           disabled={!name.trim()}
           onClick={() => onSave({
             activityType: name.trim(),
-            durationMin: duration ? Number(duration) : null,
+            durationMin: Number(duration) > 0 ? Math.round(Number(duration) * 10) / 10 : null,
             notes: notes.trim() || null,
             countAsToday,
           })}

@@ -82,7 +82,9 @@ export function CustomizeRoutineScreen() {
   };
 
   const addExercise = (exerciseId: string) => {
-    const ex = state.exercises[exerciseId];
+    // Read the live store: a custom exercise created a moment ago isn't in this render's
+    // snapshot, and its chosen sets/reps would fall back to 3×8–12.
+    const ex = useStore.getState().exercises[exerciseId];
     patchDay(dayIdx, {
       exercises: [
         ...day.exercises,

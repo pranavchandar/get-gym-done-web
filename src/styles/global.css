@@ -454,6 +454,8 @@ body:has(.scrim) .toast-wrap { bottom: auto; top: calc(16px + env(safe-area-inse
 .cal-cell.rested { background: var(--surface3); color: var(--fg2); }
 .cal-cell.rested .tag { opacity: 0.7; }
 .cal-cell.empty { background: transparent; }
+.cal-weekdays { margin-bottom: 4px; }
+.cal-weekdays span { text-align: center; font-size: 10px; font-weight: 700; letter-spacing: 1px; color: var(--fg3); }
 .cal-cell .tag { font-size: 8px; font-weight: 700; letter-spacing: 0.4px; line-height: 1; }
 .cal-cell > span { line-height: 1.1; }
 
@@ -479,10 +481,19 @@ body:has(.scrim) .toast-wrap { bottom: auto; top: calc(16px + env(safe-area-inse
 
 .rest-overlay {
   position: fixed; inset: 0; z-index: 50;
-  background: rgba(5, 5, 4, 0.92);
+  /* The theme's own page colour, so the timer's text and buttons (which use the theme's
+     text colour) stay readable in light mode too. Frosted so set rows don't show through. */
+  background: color-mix(in srgb, var(--bg) 94%, transparent);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: var(--fg);
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px;
   animation: fade 0.2s ease;
 }
+
+/* Reserves the minimized rest bar's footprint at the bottom of the workout screen, so the
+   bar floats over empty space instead of over "Complete set" / "Next exercise". */
+.rest-bar-spacer { flex: none; height: calc(84px + env(safe-area-inset-bottom)); }
 
 .rest-bar {
   position: fixed;

@@ -10,12 +10,23 @@ import { BodyMap, levelsForExercise } from '../components/BodyMap';
 import { musclesOf } from '../domain/muscles';
 import { bestSetOf } from '../domain/onerm';
 import { useWakeLock } from '../domain/wakeLock';
+import { prefillSet } from '../domain/prefill';
 import { Keypad } from '../components/Keypad';
 import { ExercisePicker } from '../components/ExercisePicker';
 import { toast } from '../components/toast';
 import { autoPush } from '../sync/gist';
 
 const NOTIF_PROMPT_DISMISSED_KEY = 'get-gym-done:notif-prompt-dismissed';
+// Once someone minimizes the rest timer they want it out of the way: remember that.
+const REST_COLLAPSED_KEY = 'get-gym-done:rest-collapsed';
+
+function readRestCollapsed(): boolean {
+  try {
+    return localStorage.getItem(REST_COLLAPSED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
 
 export function ActiveWorkoutScreen() {
   const navigate = useNavigate();
@@ -36,6 +47,7 @@ export function ActiveWorkoutScreen() {
   const addExerciseToWorkout = useStore((s) => s.addExerciseToWorkout);
   const replaceExercise = useStore((s) => s.replaceExercise);
   const removeExerciseFromWorkout = useStore((s) => s.removeExerciseFromWorkout);
+  const discardWorkout = useStore((s) => s.discardWorkout);
 
   const dayExs = useMemo(() => (day ? dayExercisesOf(state, dayId) : []), [state, day, dayId]);
   const isRest = !!day?.isRestDay;
@@ -56,7 +68,18 @@ export function ActiveWorkoutScreen() {
   const [picker, setPicker] = useState<null | 'add' | 'replace'>(null);
   const [keypad, setKeypad] = useState<null | 'weight' | 'reps'>(null);
   const [confirmFinish, setConfirmFinish] = useState(false);
-  const [restCollapsed, setRestCollapsed] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [restCollapsed, setRestCollapsedState] = useState(readRestCollapsed);
+  const setRestCollapsed = (update: (c: boolean) => boolean) =>
+    setRestCollapsedState((c) => {
+      const next = update(c);
+      try {
+        localStorage.setItem(REST_COLLAPSED_KEY, next ? '1' : '0');
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
 
   // Keep the screen on for the whole session so the phone doesn't lock between sets.
   useWakeLock(state.prefs.keepAwake !== false && !!day && !isRest && !emptyDay);
@@ -197,6 +220,7 @@ export function ActiveWorkoutScreen() {
           else doFinish();
         }}
       />
+      {active.restEndAt != null && restCollapsed && <div className="rest-bar-spacer" aria-hidden="true" />}
 
       {/* rest overlay */}
       {active.restEndAt != null && (
@@ -232,6 +256,19 @@ export function ActiveWorkoutScreen() {
       {menuOpen && (
         <Sheet onClose={() => setMenuOpen(false)}>
           <div className="stack gap-8">
+            {/* Ending early is normal (a short day, a phone call): it must not require
+                deleting every remaining exercise first. */}
+            <button
+              className="ghost-cta"
+              onClick={() => {
+                setMenuOpen(false);
+                if (doneSets === 0) setConfirmDiscard(true);
+                else if (unfinished.length > 0) setConfirmFinish(true);
+                else doFinish();
+              }}
+            >
+              Finish workout
+            </button>
             <button className="ghost-cta" onClick={() => { setMenuOpen(false); setPicker('add'); }}>Add exercise</button>
             <button className="ghost-cta" onClick={() => { setMenuOpen(false); setPicker('replace'); }}>Replace this exercise</button>
             {total > 1 && (
@@ -239,8 +276,37 @@ export function ActiveWorkoutScreen() {
                 Remove this exercise
               </button>
             )}
+            <button className="ghost-cta" style={{ color: 'var(--coral)' }} onClick={() => { setMenuOpen(false); setConfirmDiscard(true); }}>
+              Discard workout
+            </button>
           </div>
         </Sheet>
+      )}
+
+      {confirmDiscard && (
+        <Dialog onClose={() => setConfirmDiscard(false)}>
+          <div className="headline-small mb-8">Discard this workout?</div>
+          <p className="body-medium muted" style={{ margin: 0 }}>
+            {doneSets > 0
+              ? `The ${doneSets} ${doneSets === 1 ? 'set' : 'sets'} you logged will be deleted. This can't be undone.`
+              : "You haven't logged any sets, so there's nothing to save."}
+          </p>
+          <div className="dialog-actions mt-20">
+            <button
+              className="ghost-cta"
+              style={{ color: 'var(--coral)', borderColor: 'var(--coral)' }}
+              onClick={() => {
+                setConfirmDiscard(false);
+                discardWorkout();
+                navigate('/home');
+                toast('Workout discarded');
+              }}
+            >
+              Discard
+            </button>
+            <BigCta style={{ minHeight: 52 }} onClick={() => setConfirmDiscard(false)}>Keep training</BigCta>
+          </div>
+        </Dialog>
       )}
 
       {picker && (
@@ -322,21 +388,9 @@ function ExerciseContent({
       const sameHist = lastLogs.find((l) => l.setNumber === n);
       return { weightDisplay: overrides[n], reps: sameHist?.reps ?? p.low };
     }
-    const isExtra = n > p.sets;
-    if (isExtra) {
-      const cur = [...info.exLogs].sort((a, b) => a.setNumber - b.setNumber);
-      if (cur.length) {
-        const last = cur[cur.length - 1];
-        return { weightDisplay: roundDisplay(kgToDisplay(last.weightKg, unit), unit), reps: last.reps };
-      }
-    }
-    const same = lastLogs.find((l) => l.setNumber === n);
-    if (same) return { weightDisplay: roundDisplay(kgToDisplay(same.weightKg, unit), unit), reps: same.reps };
-    if (lastLogs.length) {
-      const last = lastLogs[lastLogs.length - 1];
-      return { weightDisplay: roundDisplay(kgToDisplay(last.weightKg, unit), unit), reps: last.reps };
-    }
-    return { weightDisplay: isBW ? 0 : defaultStartDisplayWeight(unit), reps: p.low };
+    const guess = prefillSet(n, info.exLogs, lastLogs);
+    if (guess) return { weightDisplay: roundDisplay(kgToDisplay(guess.weightKg, unit), unit), reps: guess.reps };
+    return { weightDisplay: isBW ? 0 : defaultStartDisplayWeight(unit, ex?.equipment ?? ''), reps: p.low };
   };
 
   const [draft, setDraft] = useState(() => (activeSetNumber ? prefill(activeSetNumber) : { weightDisplay: 0, reps: 0 }));

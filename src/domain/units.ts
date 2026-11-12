@@ -25,12 +25,24 @@ export function incrementKgFor(unit: Units): number {
 
 /** Round a display value to a sensible precision for the unit. */
 export function roundDisplay(value: number, unit: Units): number {
-  return unit === 'lbs' ? Math.round(value * 2) / 2 : Math.round(value * 100) / 100;
+  // lbs to 0.1, not the 0.5 plate grid: a 218.4 lb weigh-in must read 218.4, and a typed
+  // weight is kept as typed.
+  return unit === 'lbs' ? Math.round(value * 10) / 10 : Math.round(value * 100) / 100;
 }
 
-/** Default prefill weight in display units — snapped to the unit's plate grid. */
-export function defaultStartDisplayWeight(unit: Units): number {
-  return unit === 'lbs' ? 45 : 20;
+const BAR_EQUIPMENT = new Set(['Barbell', 'EZ Bar', 'Trap Bar', 'Smith Machine', 'T-Bar']);
+
+/**
+ * Starting weight (display units) for an exercise with no history at all: the empty bar
+ * for bar lifts, light dumbbells, a light stack on cables and machines, and nothing for
+ * bodyweight, bands and the rest. Only set 1 ever sees it: later sets copy what you log.
+ */
+export function defaultStartDisplayWeight(unit: Units, equipment: string): number {
+  const lbs = unit === 'lbs';
+  if (BAR_EQUIPMENT.has(equipment)) return lbs ? 45 : 20;
+  if (equipment === 'Dumbbell' || equipment === 'Kettlebell') return lbs ? 15 : 8;
+  if (equipment === 'Cable' || equipment === 'Machine') return lbs ? 20 : 10;
+  return 0;
 }
 
 /** Format a weight (stored kg) for display, trimming trailing zeros. */
