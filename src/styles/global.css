@@ -169,7 +169,8 @@ h1, h2, h3, .title-small, .title-medium, .headline-small, .headline-medium, .hea
 .grow { flex: 1; }
 /* Let a flex child shrink below its content (long names) instead of pushing siblings out. */
 .min0 { min-width: 0; }
-@media (max-width: 360px) { .hide-narrow { display: none; } }
+/* Doubled class: beats a component's own display rule (.icon-btn is inline-flex). */
+@media (max-width: 360px) { .hide-narrow.hide-narrow { display: none; } }
 .nowrap { white-space: nowrap; }
 .ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Icons are fixed-size glyphs: never let a long label squeeze them. */

@@ -353,7 +353,7 @@ function RecordRow({
   return (
     <div className="card stack">
       {/* The whole card row is the target, not just the text line. */}
-      <button className="row-between gap-12" style={{ width: 'calc(100% + 32px)', margin: '-16px', padding: 16, background: 'none', border: 'none', color: 'var(--fg)', textAlign: 'left' }} onClick={onToggle} aria-expanded={open}>
+      <button className="row-between gap-12" style={{ width: 'calc(100% + 32px)', margin: open ? '-16px -16px -8px' : '-16px', padding: open ? '16px 16px 8px' : 16, background: 'none', border: 'none', color: 'var(--fg)', textAlign: 'left' }} onClick={onToggle} aria-expanded={open}>
         <span className="title-small min0">{ex?.name ?? 'Exercise'}</span>
         <span className="title-small accent nowrap">{headline}</span>
       </button>

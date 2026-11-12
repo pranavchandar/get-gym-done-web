@@ -142,7 +142,8 @@ export function HomeScreen() {
       <div className="stat-row">
         <div className="stat-pill" title={`Weeks in a row with at least ${plural(target, 'training day')}. Rest days never break it.`}>
           <div className="big">{streak.current > 0 ? <>{streak.current}<span className="unit">wk</span></> : '—'}</div>
-          <div className="label-small muted" style={{ marginTop: 4 }}>{streak.lost ? 'Streak lost' : 'Week streak'}</div>
+          {/* Narrow phones: "Streak" alone fits a third of the width; the dash says the rest. */}
+          <div className="label-small muted" style={{ marginTop: 4 }}>{streak.lost ? <>Streak<span className="hide-narrow"> lost</span></> : <><span className="hide-narrow">Week </span>streak</>}</div>
         </div>
         <div className="stat-pill" title={`Days with a workout or activity this week, out of your target of ${target}.`}>
           <div className="big">{streak.thisWeek}/{target}</div>
