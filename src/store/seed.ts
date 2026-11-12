@@ -1,7 +1,12 @@
 import seedData from '../data/seed_data.json';
 import type { Split, WorkoutDay, DayExercise, Exercise } from '../types';
 
-export const SEED_VERSION = 3;
+export const SEED_VERSION = 4;
+
+/** Holds and carries: logged in seconds, not reps. */
+const TIMED = new Set(['plank', 'side_plank', 'copenhagen_plank', 'farmers_carry']);
+/** Default hold for a timed exercise whose prescription was written as 1 rep. */
+export const TIMED_DEFAULT: [number, number] = [30, 60];
 
 interface SeedDayExercise {
   exerciseId: string;
@@ -74,6 +79,10 @@ export function buildSeedCatalog(): SeedCatalog {
       defaultRepsLow: se.defaultRepsLow ?? 8,
       defaultRepsHigh: se.defaultRepsHigh ?? 12,
     };
+    if (TIMED.has(se.id)) {
+      exercises[se.id].timed = true;
+      if (se.defaultRepsHigh <= 1) [exercises[se.id].defaultRepsLow, exercises[se.id].defaultRepsHigh] = TIMED_DEFAULT;
+    }
   }
 
   for (const ss of data.splits) {
@@ -98,6 +107,9 @@ export function buildSeedCatalog(): SeedCatalog {
           prescribedRepsLow: de.repsLow,
           prescribedRepsHigh: de.repsHigh,
         };
+        if (TIMED.has(de.exerciseId) && de.repsHigh <= 1) {
+          [dayExercises[id].prescribedRepsLow, dayExercises[id].prescribedRepsHigh] = TIMED_DEFAULT;
+        }
       }
     }
   }

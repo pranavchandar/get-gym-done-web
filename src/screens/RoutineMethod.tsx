@@ -10,7 +10,7 @@ export function RoutineMethodScreen() {
 
   return (
     <div className="ob screen">
-      <TopBar onBack={() => navigate('/pick-split')} eyebrow="STEP 2 OF 3" />
+      <TopBar onBack={() => navigate('/pick-split')} eyebrow="STEP 2" />
       <div className="screen-scroll pad">
         <h1 className="display-small" style={{ margin: '0 0 8px' }}>
           HOW DO YOU<br />

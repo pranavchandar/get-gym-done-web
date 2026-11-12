@@ -22,6 +22,26 @@ const partOf = (muscle: string) => BODY_PARTS.find((b) => b.muscles.includes(mus
 
 const LIB_PAGE = 40;
 
+/**
+ * How well a name answers a search, lower is better: exact name, then names starting with
+ * the query, then a word starting with it, then anywhere in the name, then every query
+ * word somewhere, then the muscle. Infinity = no match. "row" finds Barbell Row before
+ * Arrow-anything; "bench" puts Bench Press above Decline Dumbbell Bench Press.
+ */
+export function searchScore(q: string, name: string, muscle: string): number {
+  if (!q) return 0;
+  const n = name.toLowerCase();
+  if (n === q) return 0;
+  if (n.startsWith(q)) return 1;
+  const words = n.split(/[^a-z0-9]+/);
+  if (words.some((w) => w.startsWith(q))) return 2;
+  if (n.includes(q)) return 3;
+  const parts = q.split(/\s+/).filter(Boolean);
+  if (parts.length > 1 && parts.every((p) => words.some((w) => w.startsWith(p)) || n.includes(p))) return 4;
+  if (muscle.toLowerCase().includes(q)) return 5;
+  return Infinity;
+}
+
 export function ExercisePicker({
   onPick,
   onClose,
@@ -54,7 +74,9 @@ export function ExercisePicker({
   useEffect(() => setLibLimit(LIB_PAGE), [query, part, equip]);
 
   const q = query.trim().toLowerCase();
-  const matchesText = (name: string, muscle: string) => !q || name.toLowerCase().includes(q) || muscle.toLowerCase().includes(q);
+  const matchesText = (name: string, muscle: string) => searchScore(q, name, muscle) < Infinity;
+  const byScore = (a: { name: string; muscle: string }, b: { name: string; muscle: string }) =>
+    searchScore(q, a.name, a.muscle) - searchScore(q, b.name, b.muscle) || a.name.length - b.name.length || a.name.localeCompare(b.name);
 
   // Library entries not already in the catalog (by id or by name).
   const libPool = useMemo(() => {
@@ -84,6 +106,11 @@ export function ExercisePicker({
     const list = Object.values(exercises).filter(
       (e) => matchesText(e.name, e.primaryMuscle) && (!part || partOf(e.primaryMuscle) === part) && (!equip || e.equipment === equip),
     );
+    // Searching: one list, best match first. Browsing: grouped by muscle.
+    if (q) {
+      const ranked = [...list].sort((a, b) => byScore({ name: a.name, muscle: a.primaryMuscle }, { name: b.name, muscle: b.primaryMuscle }));
+      return ranked.length ? [['BEST MATCHES', ranked] as const] : [];
+    }
     const byMuscle = new Map<string, Exercise[]>();
     for (const e of list) {
       const arr = byMuscle.get(e.primaryMuscle);
@@ -97,7 +124,10 @@ export function ExercisePicker({
   }, [exercises, q, part, equip]);
 
   const libMatches = useMemo(
-    () => libPool.filter((e) => matchesText(e.n, e.p) && (!part || partOf(e.p) === part) && (!equip || e.e === equip)),
+    () => {
+      const hits = libPool.filter((e) => matchesText(e.n, e.p) && (!part || partOf(e.p) === part) && (!equip || e.e === equip));
+      return q ? hits.sort((a, b) => byScore({ name: a.n, muscle: a.p }, { name: b.n, muscle: b.p })) : hits;
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [libPool, q, part, equip],
   );

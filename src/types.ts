@@ -31,6 +31,13 @@ export interface Exercise {
   defaultSets: number;
   defaultRepsLow: number;
   defaultRepsHigh: number;
+  // Web-only (dropped from the Android-compatible export):
+  /** Sets are holds measured in seconds (plank): SetLog.reps carries the seconds. */
+  timed?: boolean;
+  /** Rest after a set of this exercise, overriding the default; null = default. */
+  restSeconds?: number | null;
+  /** Your own note: seat height, grip, cues. */
+  notes?: string | null;
 }
 
 export interface DayExercise {
@@ -51,6 +58,8 @@ export interface Session {
   notes: string | null;
   activityType?: string | null;
   durationMin?: number | null;
+  /** Web-only: distance of a run/ride/swim, in km. */
+  distanceKm?: number | null;
 }
 
 export interface SetLog {
@@ -62,7 +71,15 @@ export interface SetLog {
   reps: number;
   completedAt: number;
   rir?: number | null;
+  // Web-only:
+  /** Warm-ups don't count toward volume, records or suggestions; top/back-off are labels. */
+  tag?: SetTag | null;
+  /** Resistance band level 1–5 (extra light … extra heavy) for band exercises. */
+  band?: number | null;
 }
+
+export type SetTag = 'warmup' | 'top' | 'backoff';
+export const BAND_LEVELS = ['Extra light', 'Light', 'Medium', 'Heavy', 'Extra heavy'] as const;
 
 export interface BodyMetric {
   id: string;
@@ -87,7 +104,18 @@ export interface UserPrefs {
   goalWeightKg?: number | null;
   bodyFigure?: BodyFigure;
   keepAwake?: boolean;
+  /** Show estimated 1RMs (some people find them noisy or discouraging). */
+  show1RM?: boolean;
+  textSize?: TextSize;
+  /** Ask for reps-in-reserve after each working set. */
+  logEffort?: boolean;
+  /** Training days per week the weekly streak counts against; null = from the routine. */
+  weeklyTarget?: number | null;
+  /** Fixed training weekdays (0 = Sunday); null = train whenever, rest days by rotation. */
+  trainingWeekdays?: number[] | null;
 }
+
+export type TextSize = 'default' | 'large' | 'larger';
 
 // Ephemeral-but-persisted state of the workout currently being logged.
 export interface ActiveSessionState {
@@ -99,6 +127,8 @@ export interface ActiveSessionState {
   currentIndex: number;
   restEndAt: number | null;
   restDuration: number | null; // seconds for the current running timer
+  /** Sets added (+) or removed (−) per exercise this workout, relative to the prescription. */
+  setAdjust?: Record<string, number>;
 }
 
 export const REST_SESSION_NOTE = 'rest';

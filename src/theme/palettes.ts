@@ -45,17 +45,19 @@ export const CONFETTI_COLORS = [
 export interface SplitOption {
   id: string;
   badge?: string;
+  /** Who it suits, in a line. */
+  blurb?: string;
 }
 
 export const SPLIT_OPTIONS: SplitOption[] = [
-  { id: 'toji_7day', badge: 'RECOMMENDED' },
-  { id: 'ppl_6day' },
-  { id: 'upper_lower_4day' },
-  { id: 'phul_4day' },
-  { id: 'bro_5day' },
-  { id: 'arnold_6day' },
-  { id: 'glute_focused_5day' },
-  { id: 'full_body_3day' },
+  { id: 'toji_7day', badge: 'RECOMMENDED', blurb: 'Five days that hit everything twice, with rest built in.' },
+  { id: 'ppl_6day', blurb: 'Six days a week for size; each muscle twice. For experienced lifters with the time.' },
+  { id: 'upper_lower_4day', blurb: 'Four days, each muscle twice a week. A solid default for most people.' },
+  { id: 'phul_4day', blurb: 'Four days mixing heavy strength days with higher-rep size days.' },
+  { id: 'bro_5day', blurb: 'One muscle group a day, five days. Big pumps, each muscle once a week.' },
+  { id: 'arnold_6day', blurb: 'Six days, chest with back and shoulders with arms. High volume.' },
+  { id: 'glute_focused_5day', blurb: 'Five days with extra glute and hamstring work, upper body kept in.' },
+  { id: 'full_body_3day', blurb: 'Three full-body days. Best for beginners or a busy week.' },
   { id: 'custom' },
 ];
 

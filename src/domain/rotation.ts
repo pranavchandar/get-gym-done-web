@@ -34,26 +34,3 @@ export function nextWorkoutDay(
   return lowestTrainable(trainable);
 }
 
-/**
- * Longest cyclic run of rest days. Duplicates the flag list to handle wrap-around.
- * 0 if no rest days; n (cycle length) if every day is a rest day.
- */
-export function maxConsecutiveRestDays(days: WorkoutDay[]): number {
-  const sorted = [...days].sort((a, b) => a.dayNumber - b.dayNumber);
-  const flags = sorted.map((d) => d.isRestDay);
-  const n = flags.length;
-  if (n === 0) return 0;
-  if (flags.every((f) => f)) return n;
-  const doubled = flags.concat(flags);
-  let max = 0;
-  let run = 0;
-  for (const f of doubled) {
-    if (f) {
-      run++;
-      if (run > max) max = run;
-    } else {
-      run = 0;
-    }
-  }
-  return Math.min(max, n);
-}

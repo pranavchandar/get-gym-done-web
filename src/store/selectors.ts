@@ -39,8 +39,8 @@ export function allCompletedSessions(s: StoreData): Session[] {
     .sort((a, b) => (a.completedAt as number) - (b.completedAt as number));
 }
 
-/** Last completed session (with a day in the active split) day number → drives rotation. */
-export function lastCompletedDayNumber(s: StoreData): number | null {
+/** Last completed session on a day of the active split (rest logs included) → drives rotation. */
+export function lastRoutineSession(s: StoreData): Session | null {
   const days = activeDays(s);
   const dayIds = new Set(days.map((d) => d.id));
   let best: Session | null = null;
@@ -49,6 +49,11 @@ export function lastCompletedDayNumber(s: StoreData): number | null {
     if (!dayIds.has(se.workoutDayId)) continue;
     if (!best || (se.completedAt as number) > (best.completedAt as number)) best = se;
   }
+  return best;
+}
+
+export function lastCompletedDayNumber(s: StoreData): number | null {
+  const best = lastRoutineSession(s);
   if (!best || best.workoutDayId == null) return null;
   return s.workoutDays[best.workoutDayId]?.dayNumber ?? null;
 }
@@ -107,18 +112,18 @@ export function bodyMetricsSorted(s: StoreData): BodyMetric[] {
 }
 
 /**
- * epoch-day -> day number actually trained. Rest logs carry a workoutDayId too
- * (autoLogRestDay stores the rest day's id), so they must be filtered out here or
- * a day you did nothing on renders as a completed workout.
+ * epoch-day -> calendar tag of the workout done that day: "D3" for a routine day, "LIFT"
+ * for a workout with sets but no routine day (imported from another app).
  */
-export function completedByEpochDay(s: StoreData): Map<number, number> {
-  const map = new Map<number, number>();
+export function workoutTagByEpochDay(s: StoreData): Map<number, string> {
+  const withLogs = new Set(Object.values(s.setLogs).map((l) => l.sessionId));
+  const map = new Map<number, string>();
   for (const se of Object.values(s.sessions)) {
-    if (se.completedAt == null || se.workoutDayId == null) continue;
-    if (se.notes === REST_SESSION_NOTE) continue;
-    const wd = s.workoutDays[se.workoutDayId];
-    if (!wd || wd.isRestDay) continue;
-    map.set(epochDayLocal(se.completedAt), wd.dayNumber);
+    if (se.completedAt == null || se.notes === REST_SESSION_NOTE) continue;
+    const ed = epochDayLocal(se.completedAt);
+    const wd = se.workoutDayId ? s.workoutDays[se.workoutDayId] : null;
+    if (wd && !wd.isRestDay) map.set(ed, `D${wd.dayNumber}`);
+    else if (!se.activityType && withLogs.has(se.id) && !map.has(ed)) map.set(ed, 'LIFT');
   }
   return map;
 }

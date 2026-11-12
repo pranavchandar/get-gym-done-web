@@ -45,7 +45,7 @@ export function PickSplitScreen() {
 
   return (
     <div className="ob screen">
-      <TopBar onBack={() => navigate('/splash')} eyebrow="STEP 1 OF 3" />
+      <TopBar onBack={() => navigate('/splash')} eyebrow="STEP 1" />
       <div className="screen-scroll pad">
         <h1 className="display-small" style={{ margin: '0 0 16px' }}>
           PICK YOUR<br />SPLIT
@@ -83,7 +83,7 @@ export function PickSplitScreen() {
                 <SplitCard
                   key={opt.id}
                   name="Build my own"
-                  sub="Assemble your own routine"
+                  sub="Name your days and pick every exercise yourself"
                   chips={[]}
                   selected={selected === opt.id}
                   onClick={() => pickTemplate(opt.id)}
@@ -96,7 +96,7 @@ export function PickSplitScreen() {
               <SplitCard
                 key={opt.id}
                 name={sp.name}
-                sub={subLabel(opt.id)}
+                sub={opt.blurb ? `${subLabel(opt.id)} · ${opt.blurb}` : subLabel(opt.id)}
                 chips={dayChips(opt.id)}
                 badge={opt.badge}
                 selected={selected === opt.id}

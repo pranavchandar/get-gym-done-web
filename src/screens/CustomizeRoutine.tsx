@@ -5,7 +5,7 @@ import type { RoutineDraft, DraftDay } from '../store/store';
 import { daysOf, dayExercisesOf } from '../store/selectors';
 import { MIN_DAYS, MAX_DAYS } from '../types';
 import { TopBar, BigCta, GhostCta, Stepper } from '../components/ui';
-import { Plus, Trash } from '../components/icons';
+import { Plus, Trash, ChevronUp, ChevronDown, Swap } from '../components/icons';
 import { ExercisePicker } from '../components/ExercisePicker';
 
 export function CustomizeRoutineScreen() {
@@ -39,6 +39,7 @@ export function CustomizeRoutineScreen() {
   const [draft, setDraft] = useState<RoutineDraft>(initial);
   const [dayIdx, setDayIdx] = useState(0);
   const [picking, setPicking] = useState(false);
+  const [replacing, setReplacing] = useState<number | null>(null);
   const [removedDays, setRemovedDays] = useState<DraftDay[]>([]);
 
   const day = draft.days[dayIdx];
@@ -98,6 +99,23 @@ export function CustomizeRoutineScreen() {
     });
   };
 
+  const moveRow = (ri: number, dir: -1 | 1) => {
+    const j = ri + dir;
+    if (j < 0 || j >= day.exercises.length) return;
+    const exercises = [...day.exercises];
+    [exercises[ri], exercises[j]] = [exercises[j], exercises[ri]];
+    patchDay(dayIdx, { exercises });
+  };
+
+  // Insert a copy right after this day (an A/B split often starts as two copies).
+  const copyDay = () => {
+    if (draft.days.length >= MAX_DAYS) return;
+    const days = [...draft.days];
+    days.splice(dayIdx + 1, 0, { ...day, name: `${day.name} (copy)`, exercises: day.exercises.map((e) => ({ ...e })) });
+    setDraft((prev) => ({ ...prev, days }));
+    setDayIdx(dayIdx + 1);
+  };
+
   const lockIn = () => {
     const id = commit(draft);
     if (id) navigate('/home');
@@ -105,7 +123,7 @@ export function CustomizeRoutineScreen() {
 
   return (
     <div className="ob screen">
-      <TopBar onBack={() => navigate(-1)} eyebrow="STEP 3 OF 3" />
+      <TopBar onBack={() => navigate(-1)} eyebrow={seedSplitId ? 'STEP 3 · LAST' : 'STEP 2 · LAST'} />
       <div className="screen-scroll pad">
         <h1 className="display-small" style={{ margin: '0 0 8px' }}>
           BUILD YOUR<br />ROUTINE.
@@ -165,13 +183,19 @@ export function CustomizeRoutineScreen() {
                     <div key={ri} className="card-2 card" style={{ borderRadius: 12 }}>
                       <div className="row-between gap-8 mb-8">
                         <span className="title-small min0">{ex?.name ?? 'Exercise'}</span>
-                        <button
-                          className="icon-btn bare"
-                          style={{ color: 'var(--fg2)', width: 28, height: 28 }}
-                          onClick={() => patchDay(dayIdx, { exercises: day.exercises.filter((_, k) => k !== ri) })}
-                        >
-                          <Trash size={16} />
-                        </button>
+                        <div className="row" style={{ gap: 2 }}>
+                          <button className="icon-btn bare" style={{ width: 28, height: 28 }} aria-label="Move up" disabled={ri === 0} onClick={() => moveRow(ri, -1)}><ChevronUp size={16} /></button>
+                          <button className="icon-btn bare" style={{ width: 28, height: 28 }} aria-label="Move down" disabled={ri === day.exercises.length - 1} onClick={() => moveRow(ri, 1)}><ChevronDown size={16} /></button>
+                          <button className="icon-btn bare" style={{ width: 28, height: 28 }} aria-label="Replace exercise" onClick={() => setReplacing(ri)}><Swap size={16} /></button>
+                          <button
+                            className="icon-btn bare"
+                            style={{ color: 'var(--fg2)', width: 28, height: 28 }}
+                            aria-label="Remove exercise"
+                            onClick={() => patchDay(dayIdx, { exercises: day.exercises.filter((_, k) => k !== ri) })}
+                          >
+                            <Trash size={16} />
+                          </button>
+                        </div>
                       </div>
                       <div className="rx-grid">
                         <div className="stack gap-4" style={{ alignItems: 'center' }}>
@@ -196,6 +220,9 @@ export function CustomizeRoutineScreen() {
                 <button className="ghost-cta" onClick={() => setPicking(true)}>
                   <Plus size={18} /> Add exercise
                 </button>
+                {day.exercises.length > 0 && draft.days.length < MAX_DAYS && (
+                  <button className="text-link center" onClick={copyDay}>Copy this day</button>
+                )}
               </div>
             )}
           </div>
@@ -208,6 +235,16 @@ export function CustomizeRoutineScreen() {
       </div>
 
       {picking && <ExercisePicker onClose={() => setPicking(false)} onPick={addExercise} />}
+      {replacing != null && (
+        <ExercisePicker
+          title="Replace exercise"
+          onClose={() => setReplacing(null)}
+          onPick={(id) => {
+            patchDay(dayIdx, { exercises: day.exercises.map((e, k) => (k === replacing ? { ...e, exerciseId: id } : e)) });
+            setReplacing(null);
+          }}
+        />
+      )}
     </div>
   );
 }

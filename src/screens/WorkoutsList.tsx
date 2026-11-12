@@ -2,7 +2,13 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/store';
 import { activeSplit, activeDays, dayExercisesOf, completedCountForDay } from '../store/selectors';
-import { ChevronUp, ChevronDown, Trash, Plus, Download, FileText, Table, Braces } from '../components/icons';
+import { ChevronUp, ChevronDown, ChevronRight, Trash, Plus, Download, FileText, Table, Braces, Swap } from '../components/icons';
+import { plural, formatMinutes } from '../domain/format';
+import { REST_SESSION_NOTE } from '../types';
+import { statsCtx, logsBySession, volumeKg, workingSets } from '../domain/stats';
+import { sessionDurationMin } from '../domain/summary';
+import { kgToDisplay, formatDistance } from '../domain/units';
+import { formatDateShort } from '../domain/dates';
 import { Sheet } from '../components/ui';
 import { toast } from '../components/toast';
 import { exportSplit, buildSplitExport, type ExportFormat } from '../export/splitExport';
@@ -13,6 +19,7 @@ export function WorkoutsListScreen() {
   const moveDay = useStore((s) => s.moveDay);
   const addDay = useStore((s) => s.addDay);
   const removeDay = useStore((s) => s.removeDay);
+  const duplicateDay = useStore((s) => s.duplicateDay);
 
   const split = activeSplit(state);
   const days = useMemo(() => activeDays(state), [state]);
@@ -21,12 +28,13 @@ export function WorkoutsListScreen() {
 
   if (!split || days.length === 0) {
     return (
-      <div className="pad">
+      <div className="pad stack gap-12">
         <div className="label-medium muted">ROUTINE</div>
-        <h1 className="display-small" style={{ margin: '6px 0 24px' }}>WORKOUTS</h1>
+        <h1 className="display-small" style={{ margin: '6px 0 12px' }}>WORKOUTS</h1>
         <div className="card center muted body-medium" style={{ padding: 32 }}>
           No routine set. Pick a split from Settings first.
         </div>
+        <HistoryList />
       </div>
     );
   }
@@ -71,7 +79,7 @@ export function WorkoutsListScreen() {
                     {done > 0 && !edit && <span className="pill pill-solid" style={{ padding: '4px 8px' }}>{done}×</span>}
                   </div>
                   <span className="body-small muted">
-                    {d.isRestDay ? (edit ? 'Recovery day' : 'Recovery day — rest, eat, sleep') : edit ? `${exs.length} exercises` : `${exs.length} exercises · ${sets} sets · ${done} completed`}
+                    {d.isRestDay ? (edit ? 'Recovery day' : 'Recovery day — rest, eat, sleep') : edit ? plural(exs.length, 'exercise') : `${plural(exs.length, 'exercise')} · ${plural(sets, 'set')} · ${done} completed`}
                   </span>
                 </div>
               </button>
@@ -79,6 +87,9 @@ export function WorkoutsListScreen() {
                 <div className="row" style={{ gap: 2 }}>
                   <button className="icon-btn bare" style={{ width: 34 }} disabled={i === 0} onClick={() => moveDay(split.id, d.dayNumber, -1)} aria-label="Move day up"><ChevronUp size={18} /></button>
                   <button className="icon-btn bare" style={{ width: 34 }} disabled={i === days.length - 1} onClick={() => moveDay(split.id, d.dayNumber, 1)} aria-label="Move day down"><ChevronDown size={18} /></button>
+                  {!d.isRestDay && (
+                    <button className="icon-btn bare hide-narrow" style={{ width: 34 }} onClick={() => { duplicateDay(d.id); toast(`${d.name} copied to the end`); }} aria-label="Copy day"><Swap size={16} /></button>
+                  )}
                   <button className="icon-btn bare" style={{ width: 34, color: 'var(--coral)' }} onClick={() => { if (!removeDay(d.id)) toast("Can't remove — this day has logged workouts."); }} aria-label="Remove day"><Trash size={16} /></button>
                 </div>
               )}
@@ -101,7 +112,57 @@ export function WorkoutsListScreen() {
         </button>
       )}
 
+      {!edit && <HistoryList />}
+
       {exporting && <ExportSheet splitId={split.id} onClose={() => setExporting(false)} />}
+    </div>
+  );
+}
+
+const HISTORY_PAGE = 10;
+
+/** Every finished workout and activity, newest first; tap one to see or fix its sets. */
+function HistoryList() {
+  const navigate = useNavigate();
+  const state = useStore();
+  const [limit, setLimit] = useState(HISTORY_PAGE);
+  const unit = state.prefs.units;
+  const rows = useMemo(() => {
+    const ctx = statsCtx(state);
+    const by = logsBySession(state.setLogs);
+    return Object.values(state.sessions)
+      .filter((s) => s.completedAt != null && s.notes !== REST_SESSION_NOTE)
+      .sort((a, b) => (b.completedAt as number) - (a.completedAt as number))
+      .map((s) => {
+        const logs = by.get(s.id) ?? [];
+        const day = s.workoutDayId ? state.workoutDays[s.workoutDayId] : null;
+        const title = s.activityType ?? day?.name ?? s.notes?.replace(/^Imported from [^·]+· ?/, '') ?? 'Workout';
+        const detail = s.activityType
+          ? [s.durationMin ? formatMinutes(s.durationMin) : null, s.distanceKm ? formatDistance(s.distanceKm, unit) : null].filter(Boolean).join(' · ') || 'Activity'
+          : [plural(workingSets(logs).length, 'set'), `${Math.round(kgToDisplay(volumeKg(logs, ctx), unit)).toLocaleString()} ${unit}`, (() => { const d = sessionDurationMin(s, logs); return d ? formatMinutes(d) : null; })()].filter(Boolean).join(' · ');
+        return { id: s.id, at: s.completedAt as number, title, detail };
+      });
+  }, [state, unit]);
+
+  if (!rows.length) return null;
+  return (
+    <div className="stack gap-8 mt-12">
+      <div className="row-between">
+        <span className="headline-small">HISTORY</span>
+        <span className="body-small muted">{plural(rows.length, 'session')}</span>
+      </div>
+      {rows.slice(0, limit).map((r) => (
+        <button key={r.id} className="card row-between gap-12" style={{ padding: 14, color: 'var(--fg)', textAlign: 'left' }} onClick={() => navigate(`/session/${r.id}`)}>
+          <div className="stack min0">
+            <span className="title-small ellipsis">{r.title}</span>
+            <span className="body-small muted">{formatDateShort(r.at)}{new Date(r.at).getFullYear() !== new Date().getFullYear() ? ` ${new Date(r.at).getFullYear()}` : ''} · {r.detail}</span>
+          </div>
+          <ChevronRight size={18} className="muted" />
+        </button>
+      ))}
+      {rows.length > limit && (
+        <button className="ghost-cta" onClick={() => setLimit((l) => l + HISTORY_PAGE * 3)}>Show more</button>
+      )}
     </div>
   );
 }
@@ -135,7 +196,7 @@ function ExportSheet({ splitId, onClose }: { splitId: string; onClose: () => voi
       <div className="headline-small mb-4">EXPORT ROUTINE</div>
       {summary && (
         <div className="body-small muted mb-16">
-          {summary.splitName} · {summary.trainingDays} training days · {summary.totalExercises} exercises · {summary.totalSets} sets
+          {summary.splitName} · {plural(summary.trainingDays, 'training day')} · {plural(summary.totalExercises, 'exercise')} · {plural(summary.totalSets, 'set')}
         </div>
       )}
       <div className="stack gap-8">

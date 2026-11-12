@@ -1,5 +1,3 @@
-import type { SetLog } from '../types';
-
 // Estimated one-rep max, Epley: w · (1 + r/30). All the common estimators agree at low
 // reps and diverge as reps climb, so past REP_CAP we refuse to guess rather than print
 // a number that measures work capacity instead of strength.
@@ -22,21 +20,3 @@ export function weightForReps(oneRmKg: number, reps: number): number {
   return oneRmKg / (1 + reps / 30);
 }
 
-export interface BestSet {
-  est: number;
-  weightKg: number;
-  reps: number;
-  at: number;
-}
-
-/** The set among `logs` with the highest estimate — names the set it came from. */
-export function bestSetOf(logs: SetLog[]): BestSet | null {
-  let best: BestSet | null = null;
-  for (const l of logs) {
-    const est = estimate1RM(l.weightKg, l.reps);
-    if (est != null && (!best || est > best.est)) {
-      best = { est, weightKg: l.weightKg, reps: Math.round(l.reps), at: l.completedAt };
-    }
-  }
-  return best;
-}
