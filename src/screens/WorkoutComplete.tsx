@@ -1,107 +1,104 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useStore } from '../store/store';
-import { sessionLogs } from '../store/selectors';
-import { totalVolumeKg, countPRs } from '../domain/metrics';
-import { displayToKg, kgToDisplay, formatWeight } from '../domain/units';
-import { bestSetOf } from '../domain/onerm';
+import { displayToKg, kgToDisplay } from '../domain/units';
 import { loadOfLogs, levelsOf, rankOf, MUSCLE_LABEL } from '../domain/muscles';
 import { BodyMap } from '../components/BodyMap';
-import { epochDayLocal } from '../domain/dates';
+import { epochDayLocal, formatDateShort } from '../domain/dates';
+import { summarizeSession } from '../domain/summary';
+import { compactNumber } from '../domain/metrics';
+import { workingSets } from '../domain/stats';
+import type { RecordHit } from '../domain/stats';
+import { plural, formatMinutes, describeRecord } from '../domain/format';
+import { renderShareCard, shareOrDownload } from '../export/shareCard';
+import { fileSlug } from '../export/splitExport';
 import { BigCta } from '../components/ui';
-import { Check, ArrowRight } from '../components/icons';
+import { Check, ArrowRight, Share, Note, List } from '../components/icons';
+import { NoteSheet } from './ActiveWorkout';
+import { toast } from '../components/toast';
 
 export function WorkoutCompleteScreen() {
   const navigate = useNavigate();
   const { sessionId = '' } = useParams();
   const state = useStore();
   const unit = state.prefs.units;
+  const show1RM = state.prefs.show1RM !== false;
   const armConfetti = useStore((s) => s.armConfetti);
   const logBodyMetric = useStore((s) => s.logBodyMetric);
+  const updateSession = useStore((s) => s.updateSession);
+  const [noteOpen, setNoteOpen] = useState(false);
+  const [sharing, setSharing] = useState(false);
 
-  const session = state.sessions[sessionId];
+  const summary = useMemo(() => summarizeSession(state, sessionId), [state, sessionId]);
+  const session = summary?.session;
   const day = session?.workoutDayId ? state.workoutDays[session.workoutDayId] : null;
-  const logs = useMemo(() => (session ? sessionLogs(state, sessionId) : []), [state, session, sessionId]);
+  const logs = summary?.logs ?? [];
 
-  const exerciseIds = [...new Set(logs.map((l) => l.exerciseId))];
-  const setCount = logs.length;
-
-  const { prCount, volLabel, volSub } = useMemo(() => {
-    if (!session || session.completedAt == null) return { prCount: 0, volLabel: '—', volSub: 'Vol' };
-    const completedAt = session.completedAt;
-    // prior max weight per exercise across earlier completed sessions
-    const priorMax = new Map<string, number>();
-    for (const other of Object.values(state.sessions)) {
-      if (other.completedAt == null || other.id === sessionId) continue;
-      if (other.completedAt >= completedAt) continue;
-      for (const l of sessionLogs(state, other.id)) {
-        priorMax.set(l.exerciseId, Math.max(priorMax.get(l.exerciseId) ?? 0, l.weightKg));
-      }
+  // Records grouped by exercise; an estimated-1RM record is hidden for people who hid 1RMs.
+  const records = useMemo(() => {
+    const byEx = new Map<string, RecordHit[]>();
+    for (const r of summary?.records ?? []) {
+      if (r.kind === 'e1rm' && !show1RM) continue;
+      const arr = byEx.get(r.exerciseId);
+      if (arr) arr.push(r);
+      else byEx.set(r.exerciseId, [r]);
     }
-    const prCount = countPRs(logs, priorMax);
-
-    let volLabel = '—';
-    let volSub = 'Vol';
-    if (session.workoutDayId) {
-      const thisVol = totalVolumeKg(logs);
-      let prior: { at: number; vol: number } | null = null;
-      for (const other of Object.values(state.sessions)) {
-        if (other.completedAt == null || other.id === sessionId) continue;
-        if (other.workoutDayId !== session.workoutDayId) continue;
-        if (other.completedAt >= completedAt) continue;
-        const v = totalVolumeKg(sessionLogs(state, other.id));
-        if (!prior || other.completedAt > prior.at) prior = { at: other.completedAt, vol: v };
-      }
-      if (!prior || prior.vol === 0) {
-        volLabel = `${Math.round(kgToDisplay(thisVol, unit))} ${unit}`;
-        volSub = 'Vol · first time';
-      } else {
-        const pct = ((thisVol - prior.vol) / prior.vol) * 100;
-        volLabel = `${pct >= 0 ? '+' : ''}${Math.round(pct)}%`;
-        volSub = 'Vol';
-      }
-    }
-    return { prCount, volLabel, volSub };
-  }, [state, session, sessionId, logs, unit]);
+    return [...byEx.entries()];
+  }, [summary, show1RM]);
 
   const muscles = useMemo(() => {
-    const load = loadOfLogs(logs, state.exercises);
+    const load = loadOfLogs(workingSets(logs), state.exercises);
     return { levels: levelsOf(load), worked: rankOf(load).worked };
   }, [logs, state.exercises]);
-
-  // Exercises whose best estimated 1RM this session beats every earlier session's.
-  const oneRmRecords = useMemo(() => {
-    if (!session || session.completedAt == null) return [];
-    const completedAt = session.completedAt;
-    const earlier = new Set(
-      Object.values(state.sessions)
-        .filter((o) => o.completedAt != null && o.id !== sessionId && o.completedAt < completedAt)
-        .map((o) => o.id),
-    );
-    const out: { exId: string; est: number; prev: number | null }[] = [];
-    for (const exId of new Set(logs.map((l) => l.exerciseId))) {
-      const now = bestSetOf(logs.filter((l) => l.exerciseId === exId));
-      if (!now) continue;
-      const prior = bestSetOf(Object.values(state.setLogs).filter((l) => l.exerciseId === exId && earlier.has(l.sessionId)));
-      if (!prior || now.est > prior.est) out.push({ exId, est: now.est, prev: prior?.est ?? null });
-    }
-    return out;
-  }, [state.sessions, state.setLogs, session, sessionId, logs]);
 
   const today = epochDayLocal(Date.now());
   const todayRow = Object.values(state.bodyMetrics).find((r) => epochDayLocal(r.recordedAt) === today);
   const bwLogged = todayRow && todayRow.bodyweightKg != null;
   const [bwInput, setBwInput] = useState('');
 
-  if (!session) {
+  if (!session || !summary) {
     return (
       <div className="pad center muted" style={{ paddingTop: 64 }}>Session not found.</div>
     );
   }
 
+  const title = day?.name ?? session.notes?.replace(/^Imported from [^·]+· ?/, '') ?? 'Workout';
+  const vol = Math.round(kgToDisplay(summary.volumeKg, unit));
+  const cmp = summary.comparison;
+  const volLabel = cmp ? `${cmp.pct >= 0 ? '+' : ''}${Math.round(cmp.pct)}%` : compactNumber(vol);
+  const volSub = 'Volume';
+
   const backHome = () => {
-    if (session?.completedAt != null && Date.now() - session.completedAt < 5 * 60_000) armConfetti();
+    if (session.completedAt != null && Date.now() - session.completedAt < 5 * 60_000) armConfetti();
     navigate('/home');
+  };
+
+  const share = async () => {
+    setSharing(true);
+    try {
+      const blob = await renderShareCard({
+        eyebrow: session.completedAt ? new Date(session.completedAt).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }) : '',
+        title,
+        stats: [
+          { label: 'Duration', value: summary.durationMin ? formatMinutes(summary.durationMin) : '—' },
+          { label: 'Sets', value: String(summary.workingSetCount) },
+          { label: `Volume (${unit})`, value: vol.toLocaleString() },
+          { label: records.length === 1 ? 'Record' : 'Records', value: String(records.length) },
+        ],
+        listTitle: records.length ? 'Records' : 'Exercises',
+        lines: records.length
+          ? records.flatMap(([exId, hits]) => hits.slice(0, 1).map((r) => ({ left: state.exercises[exId]?.name ?? 'Exercise', right: describeRecord(r, state.exercises[exId], unit).split(' · ')[1] })))
+          : summary.exerciseIds.map((id) => ({ left: state.exercises[id]?.name ?? 'Exercise', right: plural(workingSets(logs.filter((l) => l.exerciseId === id)).length, 'set') })),
+      });
+      const d = new Date(session.completedAt ?? Date.now());
+      const local = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const result = await shareOrDownload(blob, `${fileSlug(title)}-${local}.png`, `${title} — done.`);
+      if (result === 'downloaded') toast('Image saved');
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Could not create the image.');
+    } finally {
+      setSharing(false);
+    }
   };
 
   return (
@@ -110,24 +107,50 @@ export function WorkoutCompleteScreen() {
         <div style={{ width: 96, height: 96, flexShrink: 0, alignSelf: 'center', borderRadius: 999, background: 'var(--accent-primary)', color: 'var(--on-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <Check size={52} />
         </div>
-        <div className="label-medium muted">{day ? `DAY ${day.dayNumber} DONE` : 'WORKOUT DONE'}</div>
+        <div className="label-medium muted">{day ? `DAY ${day.dayNumber} DONE` : 'WORKOUT DONE'}{session.completedAt ? ` · ${formatDateShort(session.completedAt).toUpperCase()}` : ''}</div>
         <h1 className="display-medium" style={{ margin: 0 }}>
-          {day?.name ?? 'WORKOUT'}<br /><span className="accent">LOCKED IN.</span>
+          {title}<br /><span className="accent">LOCKED IN.</span>
         </h1>
         <p className="body-medium muted" style={{ margin: 0 }}>
-          {exerciseIds.length} exercise{exerciseIds.length === 1 ? '' : 's'} · {setCount} set{setCount === 1 ? '' : 's'} logged.
+          {plural(summary.exerciseIds.length, 'exercise')} · {plural(summary.workingSetCount, 'working set')}
+          {logs.length > summary.workingSetCount ? ` + ${plural(logs.length - summary.workingSetCount, 'warm-up')}` : ''}
         </p>
 
-        <div className="row gap-8" style={{ width: '100%' }}>
+        <div className="stat-row" style={{ width: '100%' }}>
           <div className="stat-pill">
-            <div className="big">{prCount}</div>
-            <div className="label-small muted" style={{ marginTop: 4 }}>{prCount === 1 ? 'PR' : 'PRs'}</div>
+            <div className="big">{summary.durationMin ? formatMinutes(summary.durationMin) : '—'}</div>
+            <div className="label-small muted" style={{ marginTop: 4 }}>Duration</div>
           </div>
           <div className="stat-pill">
-            <div className="big">{volLabel}</div>
+            <div className="big">{records.length}</div>
+            <div className="label-small muted" style={{ marginTop: 4 }}>{records.length === 1 ? 'Record' : 'Records'}</div>
+          </div>
+          <div className="stat-pill" title={cmp ? `Same ${plural(cmp.shared, 'exercise')} as ${formatDateShort(cmp.against.completedAt as number)}` : 'Nothing comparable yet'}>
+            <div className="big">{volLabel}{!cmp && <span className="unit">{unit}</span>}</div>
             <div className="label-small muted" style={{ marginTop: 4 }}>{volSub}</div>
           </div>
         </div>
+        {cmp && (
+          <p className="body-small muted" style={{ margin: '-8px 0 0' }}>
+            Volume compared on the {plural(cmp.shared, 'exercise')} you also did on {formatDateShort(cmp.against.completedAt as number)}.
+          </p>
+        )}
+
+        {records.length > 0 && (
+          <div className="card" style={{ width: '100%', textAlign: 'left' }}>
+            <div className="label-medium accent mb-8">NEW RECORDS</div>
+            <div className="stack gap-10">
+              {records.map(([exId, hits]) => (
+                <div key={exId} className="stack gap-4">
+                  <span className="title-small">{state.exercises[exId]?.name ?? 'Exercise'}</span>
+                  {hits.map((r) => (
+                    <span key={r.kind} className="body-small muted">{describeRecord(r, state.exercises[exId], unit)}</span>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {logs.length > 0 && (
           <div className="card" style={{ width: '100%', textAlign: 'left' }}>
@@ -139,21 +162,16 @@ export function WorkoutCompleteScreen() {
           </div>
         )}
 
-        {oneRmRecords.length > 0 && (
-          <div className="card" style={{ width: '100%', textAlign: 'left' }}>
-            <div className="label-medium accent mb-8">NEW ESTIMATED 1RM</div>
-            <div className="stack gap-6">
-              {oneRmRecords.map((r) => (
-                <div key={r.exId} className="row-between gap-12 body-medium">
-                  <span className="min0">{state.exercises[r.exId]?.name ?? 'Exercise'}</span>
-                  <span className="stack nowrap" style={{ alignItems: 'flex-end' }}>
-                    <span className="title-small">{formatWeight(r.est, unit)} {unit}</span>
-                    {r.prev != null && <span className="body-small muted">was {formatWeight(r.prev, unit)}</span>}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
+        <div className="row gap-8" style={{ width: '100%' }}>
+          {/* An imported workout's note holds its source label; leave it be. */}
+          {session.workoutDayId && (
+            <button className="ghost-cta grow" onClick={() => setNoteOpen(true)}><Note size={16} /> Note</button>
+          )}
+          <button className="ghost-cta grow" disabled={sharing} onClick={share}><Share size={16} /> Share</button>
+          <button className="ghost-cta grow" onClick={() => navigate(`/session/${session.id}`)}><List size={16} /> Sets</button>
+        </div>
+        {session.notes && session.workoutDayId && (
+          <div className="card body-medium" style={{ width: '100%', textAlign: 'left', whiteSpace: 'pre-wrap' }}>{session.notes}</div>
         )}
 
         <div className="card" style={{ width: '100%', textAlign: 'left' }}>
@@ -190,6 +208,16 @@ export function WorkoutCompleteScreen() {
       <div className="pad">
         <BigCta onClick={backHome}>Back home <ArrowRight size={22} /></BigCta>
       </div>
+
+      {noteOpen && (
+        <NoteSheet
+          title="Workout note"
+          placeholder="How did it go? Sleep, energy, anything to remember next time."
+          initial={session.workoutDayId ? session.notes ?? '' : ''}
+          onClose={() => setNoteOpen(false)}
+          onSave={(text) => updateSession(session.id, { notes: text })}
+        />
+      )}
     </div>
   );
 }

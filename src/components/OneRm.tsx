@@ -1,17 +1,20 @@
 import { useMemo, useState } from 'react';
 import { useStore } from '../store/store';
-import { bestSetOf, estimate1RM, weightForReps, REP_CAP } from '../domain/onerm';
-import type { BestSet } from '../domain/onerm';
-import { formatWeight, kgToDisplay, displayToKg } from '../domain/units';
+import { estimate1RM, weightForReps, REP_CAP } from '../domain/onerm';
+import { formatWeight, kgToDisplay, displayToKg, pillNumber } from '../domain/units';
 import { formatDateShort } from '../domain/dates';
+import { statsCtx, bestE1rmOf, loadKind } from '../domain/stats';
+import type { BestE1rm } from '../domain/stats';
+import { formatLoad } from '../domain/format';
 import type { SetLog, Units } from '../types';
-import { Sparkline } from './Sparkline';
+import { TrendChart } from './TrendChart';
+import type { TrendPoint } from './TrendChart';
 import { Sheet } from './ui';
 
 interface Row {
   exId: string;
-  best: BestSet;
-  series: number[];
+  best: BestE1rm;
+  series: TrendPoint[];
 }
 
 /** Estimated 1RM per exercise: best estimate, the set it came from, and its trend. */
@@ -19,6 +22,7 @@ export function OneRmSection() {
   const sessions = useStore((s) => s.sessions);
   const setLogs = useStore((s) => s.setLogs);
   const exercises = useStore((s) => s.exercises);
+  const bodyMetrics = useStore((s) => s.bodyMetrics);
   const unit = useStore((s) => s.prefs.units);
   const [open, setOpen] = useState<string | null>(null);
   const [calc, setCalc] = useState(false);
@@ -39,20 +43,21 @@ export function OneRmSection() {
       if (arr) arr.push(l);
       else m.set(idx, [l]);
     }
+    const ctx = statsCtx({ exercises, bodyMetrics });
     const out: Row[] = [];
     for (const [exId, perSession] of by) {
-      const series: number[] = [];
-      let best: BestSet | null = null;
+      const series: TrendPoint[] = [];
+      let best: BestE1rm | null = null;
       for (const idx of [...perSession.keys()].sort((a, b) => a - b)) {
-        const b = bestSetOf(perSession.get(idx)!);
+        const b = bestE1rmOf(perSession.get(idx)!, ctx);
         if (!b) continue;
-        series.push(b.est);
+        series.push({ at: completed[idx].completedAt as number, value: b.est });
         if (!best || b.est > best.est) best = b;
       }
       if (best) out.push({ exId, best, series });
     }
     return out.sort((a, b) => b.series.length - a.series.length || b.best.est - a.best.est);
-  }, [sessions, setLogs]);
+  }, [sessions, setLogs, exercises, bodyMetrics]);
 
   return (
     <div>
@@ -67,31 +72,38 @@ export function OneRmSection() {
       ) : (
         <div className="stack gap-8">
           {rows.map((r) => (
-            <button
-              key={r.exId}
-              className="card stack"
-              style={{ color: 'var(--fg)', textAlign: 'left' }}
-              onClick={() => setOpen((o) => (o === r.exId ? null : r.exId))}
-              aria-expanded={open === r.exId}
-            >
-              <div className="row-between gap-12" style={{ width: '100%' }}>
-                <span className="title-small min0">{exercises[r.exId]?.name ?? 'Exercise'}</span>
-                <span className="title-small accent nowrap">{formatWeight(r.best.est, unit)} {unit}</span>
-              </div>
-              <span className="body-small muted">
-                from {formatWeight(r.best.weightKg, unit)} {unit} × {r.best.reps} · {formatDateShort(r.best.at)}
-              </span>
+            <div key={r.exId} className="card stack">
+              <button
+                className="stack"
+                style={{ width: '100%', background: 'none', border: 'none', padding: 0, color: 'var(--fg)', textAlign: 'left' }}
+                onClick={() => setOpen((o) => (o === r.exId ? null : r.exId))}
+                aria-expanded={open === r.exId}
+              >
+                <div className="row-between gap-12" style={{ width: '100%' }}>
+                  <span className="title-small min0">{exercises[r.exId]?.name ?? 'Exercise'}</span>
+                  <span className="title-small accent nowrap">{formatWeight(r.best.est, unit)} {unit}</span>
+                </div>
+                <span className="body-small muted">
+                  from {formatLoad(r.best.weightKg, exercises[r.exId], unit)} × {r.best.reps}
+                  {loadKind(exercises[r.exId]) === 'bodyweight' ? ` (${formatWeight(r.best.loadKg, unit)} ${unit} total)` : ''} · {formatDateShort(r.best.at)}
+                </span>
+              </button>
               {open === r.exId && r.series.length > 1 && (
                 <div className="mt-8">
-                  <Sparkline values={r.series.map((v) => kgToDisplay(v, unit))} width={320} height={44} />
+                  <TrendChart
+                    points={r.series.map((p) => ({ at: p.at, value: kgToDisplay(p.value, unit) }))}
+                    format={(v) => `${pillNumber(v)} ${unit}`}
+                    height={110}
+                    label={`${exercises[r.exId]?.name ?? 'Exercise'} estimated 1RM over time`}
+                  />
                 </div>
               )}
-            </button>
+            </div>
           ))}
         </div>
       )}
       <div className="body-small muted mt-8" style={{ fontSize: 11 }}>
-        Epley formula, from your best set each session. Sets over {REP_CAP} reps aren't used.
+        Epley formula, from your best working set each session; bodyweight moves include your bodyweight. Sets over {REP_CAP} reps and warm-ups aren't used.
       </div>
       {calc && <OneRmCalculator unit={unit} onClose={() => setCalc(false)} />}
     </div>

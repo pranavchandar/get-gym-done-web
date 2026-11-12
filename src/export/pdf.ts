@@ -39,7 +39,7 @@ type Op = TextOp | RectOp;
 function toWinAnsi(s: string): string {
   return s
     .replace(/[×✕✖]/g, 'x')
-    .replace(/[—–]/g, '-')
+    .replace(/[—–−]/g, '-')
     .replace(/[·•]/g, '-')
     .replace(/[“”]/g, '"')
     .replace(/[‘’]/g, "'")

@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/store';
 import { ACCENT_PALETTES } from '../theme/palettes';
-import type { BodyFigure, ThemeChoice, Units } from '../types';
+import type { BodyFigure, ThemeChoice, Units, TextSize } from '../types';
 import { wakeLockSupported } from '../domain/wakeLock';
 import { parseImport, planImport, SOURCE_LABEL } from '../import/csvImport';
 import type { ParsedImport } from '../import/csvImport';
@@ -11,6 +11,11 @@ import type { LibraryEntry } from '../data/library';
 import { formatDateShort } from '../domain/dates';
 import { REST_MIN, REST_MAX, REST_STEP } from '../types';
 import { downloadBackup, parseBackup, applyBackup } from '../backup/backup';
+import { historyCsv, progressReportPdf } from '../export/historyExport';
+import { downloadBlob } from '../export/splitExport';
+import { weeklyTargetFor } from '../domain/schedule';
+import { activeDays } from '../store/selectors';
+import { plural } from '../domain/format';
 import { getToken, setToken, getGistId, getLastSync, pushToGist, pullFromGist, clearGistConfig } from '../sync/gist';
 import { BigCta, GhostCta, Dialog, Stepper } from '../components/ui';
 import { Check } from '../components/icons';
@@ -25,6 +30,14 @@ export function SettingsScreen() {
   const setAccent = useStore((s) => s.setAccent);
   const setPrefs = useStore((s) => s.setPrefs);
   const keepAwake = prefs.keepAwake !== false;
+  const show1RM = prefs.show1RM !== false;
+  const logEffort = !!prefs.logEffort;
+  const workoutDays = useStore((s) => s.workoutDays);
+  const activeSplitId = prefs.activeSplitId;
+  const days = useMemo(() => activeDays({ workoutDays, prefs: { activeSplitId } } as unknown as Parameters<typeof activeDays>[0]), [workoutDays, activeSplitId]);
+  const autoTarget = weeklyTargetFor({ weeklyTarget: null, trainingWeekdays: prefs.trainingWeekdays }, days);
+  const target = weeklyTargetFor(prefs, days);
+  const weekdays = prefs.trainingWeekdays ?? [];
 
   const fileRef = useRef<HTMLInputElement>(null);
   const csvRef = useRef<HTMLInputElement>(null);
@@ -43,6 +56,12 @@ export function SettingsScreen() {
         <div className="seg mb-16">
           {(['system', 'light', 'dark'] as ThemeChoice[]).map((t) => (
             <button key={t} className={prefs.theme === t ? 'active' : ''} onClick={() => setTheme(t)}>{t}</button>
+          ))}
+        </div>
+        <div className="label-medium muted mb-8">Text size</div>
+        <div className="seg mb-16">
+          {([['default', 'Default'], ['large', 'Large'], ['larger', 'Larger']] as [TextSize, string][]).map(([k, label]) => (
+            <button key={k} className={(prefs.textSize ?? 'default') === k ? 'active' : ''} onClick={() => setPrefs({ textSize: k })}>{label}</button>
           ))}
         </div>
         <div className="label-medium muted mb-8">Accent</div>
@@ -74,27 +93,72 @@ export function SettingsScreen() {
         </div>
         <div className="label-medium muted mb-8" style={{ marginTop: 16 }}>Default rest between sets</div>
         <Stepper value={prefs.restSeconds} step={REST_STEP} min={REST_MIN} max={REST_MAX} onChange={setRestSeconds} format={(v) => `${v}s`} />
-        <button
-          className="row-between"
-          style={{ width: '100%', background: 'none', border: 'none', color: 'var(--fg)', marginTop: 20, padding: 0 }}
-          onClick={() => setPrefs({ keepAwake: !keepAwake })}
-          role="switch"
-          aria-checked={keepAwake}
-        >
-          <span className="label-medium">KEEP SCREEN AWAKE DURING WORKOUTS</span>
-          <span className={`switch ${keepAwake ? 'on' : ''}`}><span /></span>
-        </button>
-        <p className="body-small muted" style={{ margin: '6px 0 0' }}>
-          {wakeLockSupported()
+        <Toggle
+          label="KEEP SCREEN AWAKE DURING WORKOUTS"
+          on={keepAwake}
+          onToggle={() => setPrefs({ keepAwake: !keepAwake })}
+          hint={wakeLockSupported()
             ? 'No unlocking your phone between sets. Released as soon as you leave the workout.'
             : "This browser can't keep the screen on, so this setting has no effect here."}
-        </p>
+        />
+        <Toggle
+          label="SHOW ESTIMATED 1RM"
+          on={show1RM}
+          onToggle={() => setPrefs({ show1RM: !show1RM })}
+          hint="One-rep-max estimates on the workout screen, records and Profile. Turn off if you'd rather not see them."
+        />
+        <Toggle
+          label="LOG REPS IN RESERVE"
+          on={logEffort}
+          onToggle={() => setPrefs({ logEffort: !logEffort })}
+          hint="After each working set, tap how many more reps you had left (0–4+). Optional per set."
+        />
         <div className="label-medium muted mb-8" style={{ marginTop: 16 }}>Muscle map figure</div>
         <div className="seg">
           {(['male', 'female'] as BodyFigure[]).map((f) => (
             <button key={f} className={(prefs.bodyFigure ?? 'male') === f ? 'active' : ''} onClick={() => setPrefs({ bodyFigure: f })}>{f}</button>
           ))}
         </div>
+      </Section>
+
+      {/* Schedule */}
+      <Section title="Schedule">
+        <div className="label-medium muted mb-8">Training days</div>
+        <div className="row gap-6 wrap mb-8" role="group" aria-label="training weekdays">
+          {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => {
+            const on = weekdays.includes(i);
+            return (
+              <button
+                key={i}
+                className={`chip ${on ? 'selected' : ''}`}
+                style={{ width: 40, justifyContent: 'center', padding: '8px 0' }}
+                aria-pressed={on}
+                aria-label={['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][i]}
+                onClick={() => {
+                  const next = on ? weekdays.filter((x) => x !== i) : [...weekdays, i].sort();
+                  setPrefs({ trainingWeekdays: next.length ? next : null });
+                }}
+              >
+                {d}
+              </button>
+            );
+          })}
+        </div>
+        <p className="body-small muted" style={{ margin: '0 0 16px' }}>
+          {weekdays.length
+            ? 'Other days show as rest days. Your routine still runs in order — you just train on these days.'
+            : 'Any day. Rest days follow your routine, and a rest day is never logged for you.'}
+        </p>
+        <div className="row-between gap-12">
+          <div className="stack min0">
+            <span className="label-medium">WEEKLY TARGET</span>
+            <span className="body-small muted">{prefs.weeklyTarget == null ? `Auto · ${plural(autoTarget, 'day')} from your ${weekdays.length ? 'training days' : 'routine'}` : 'Days a week that keep your streak going'}</span>
+          </div>
+          <Stepper value={target} min={1} max={7} onChange={(v) => setPrefs({ weeklyTarget: v })} label="weekly target" />
+        </div>
+        {prefs.weeklyTarget != null && (
+          <button className="text-link" style={{ marginTop: 6 }} onClick={() => setPrefs({ weeklyTarget: null })}>Use automatic target</button>
+        )}
       </Section>
 
       {/* Routine */}
@@ -110,9 +174,15 @@ export function SettingsScreen() {
       {/* Data */}
       <Section title="Data">
         <div className="stack gap-8">
-          <GhostCta onClick={() => { downloadBackup('gymdone-backup.json'); toast('Backup downloaded'); }}>Export to JSON</GhostCta>
-          <GhostCta onClick={() => fileRef.current?.click()}>Import from JSON</GhostCta>
+          <GhostCta onClick={() => toast(`Saved ${downloadBackup()}`)}>Back up to JSON</GhostCta>
+          <GhostCta onClick={() => fileRef.current?.click()}>Restore from JSON</GhostCta>
           <GhostCta onClick={() => csvRef.current?.click()}>Import history from Strong, Hevy or FitNotes</GhostCta>
+          <GhostCta onClick={() => { downloadBlob(historyCsv(useStore.getState()), `gymdone-history-${localDate()}.csv`); toast('History exported'); }}>Export history (CSV)</GhostCta>
+          <GhostCta onClick={() => { downloadBlob(progressReportPdf(useStore.getState()), `gymdone-report-${localDate()}.pdf`); toast('Report saved'); }}>Progress report for your coach (PDF)</GhostCta>
+          <GhostCta onClick={() => toast(`Saved ${downloadBackup({ android: true })}`)}>Backup for the Android app</GhostCta>
+          <p className="body-small muted" style={{ margin: '4px 0 0' }}>
+            The JSON backup keeps everything. The Android backup leaves out what only the web app has (set types, bands, holds, distances, exercise notes and rest times).
+          </p>
           <input
             ref={csvRef}
             type="file"
@@ -264,6 +334,24 @@ function CsvImportDialog({ parsed, library, onClose }: { parsed: ParsedImport; l
   );
 }
 
+function Toggle({ label, on, onToggle, hint }: { label: string; on: boolean; onToggle: () => void; hint: string }) {
+  return (
+    <>
+      <button
+        className="row-between"
+        style={{ width: '100%', background: 'none', border: 'none', color: 'var(--fg)', marginTop: 20, padding: 0, textAlign: 'left', gap: 12 }}
+        onClick={onToggle}
+        role="switch"
+        aria-checked={on}
+      >
+        <span className="label-medium">{label}</span>
+        <span className={`switch ${on ? 'on' : ''}`}><span /></span>
+      </button>
+      <p className="body-small muted" style={{ margin: '6px 0 0' }}>{hint}</p>
+    </>
+  );
+}
+
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
@@ -348,4 +436,9 @@ function CloudSync({ onPullRequest }: { onPullRequest: (text: string) => void })
       </div>
     </div>
   );
+}
+
+/** Today as YYYY-MM-DD in local time (toISOString is UTC: wrong after 6pm in Chicago). */
+function localDate(d = new Date()): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }

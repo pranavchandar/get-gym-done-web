@@ -9,7 +9,7 @@ import type {
   UserPrefs,
 } from '../types';
 import { parseUnit } from '../domain/units';
-import { useStore } from '../store/store';
+import { useStore, WEB_PREF_KEYS } from '../store/store';
 import type { StoreData } from '../store/store';
 import { DEFAULT_ACCENT } from '../theme/palettes';
 
@@ -40,13 +40,31 @@ export interface BackupFile {
   bodyMetrics: BodyMetric[];
   userPrefs: AndroidUserPrefs | null;
   exerciseMedia: unknown[];
+  /** Web-only settings and state; absent from the Android-compatible export. */
+  web?: { prefs: Partial<UserPrefs>; bumpSnooze?: Record<string, number> };
+}
+
+// Fields the Android app's schema has. The Android-compatible export writes only these, so
+// its importer never meets a field it doesn't know.
+const ANDROID_FIELDS = {
+  exercises: ['id', 'name', 'primaryMuscle', 'secondaryMuscles', 'illustrationFilename', 'formCues', 'equipment', 'defaultSets', 'defaultRepsLow', 'defaultRepsHigh'],
+  sessions: ['id', 'workoutDayId', 'startedAt', 'completedAt', 'notes', 'activityType', 'durationMin'],
+  setLogs: ['id', 'sessionId', 'exerciseId', 'setNumber', 'weightKg', 'reps', 'completedAt', 'rir'],
+} as const;
+
+function pick<T extends object>(rows: T[], keys: readonly string[]): T[] {
+  return rows.map((r) => {
+    const out: Record<string, unknown> = {};
+    for (const k of keys) if (k in r) out[k] = (r as Record<string, unknown>)[k];
+    return out as T;
+  });
 }
 
 function values<T>(rec: Record<string, T>): T[] {
   return Object.values(rec);
 }
 
-export function buildBackup(state: StoreData = useStore.getState()): BackupFile {
+export function buildBackup(state: StoreData = useStore.getState(), opts: { android?: boolean } = {}): BackupFile {
   const p = state.prefs;
   const userPrefs: AndroidUserPrefs = {
     id: 0,
@@ -62,7 +80,7 @@ export function buildBackup(state: StoreData = useStore.getState()): BackupFile 
     socialColor: p.color ?? null,
     avatarPhoto: p.avatarPhoto ?? null,
   };
-  return {
+  const file: BackupFile = {
     version: 2,
     exportedAt: Date.now(),
     exercises: values(state.exercises),
@@ -75,10 +93,27 @@ export function buildBackup(state: StoreData = useStore.getState()): BackupFile 
     userPrefs,
     exerciseMedia: [],
   };
+  if (opts.android) {
+    file.exercises = pick(file.exercises, ANDROID_FIELDS.exercises);
+    file.sessions = pick(file.sessions, ANDROID_FIELDS.sessions);
+    file.setLogs = pick(file.setLogs, ANDROID_FIELDS.setLogs);
+    return file;
+  }
+  const webPrefs: Partial<UserPrefs> = {};
+  for (const k of WEB_PREF_KEYS) (webPrefs as Record<string, unknown>)[k] = p[k];
+  file.web = { prefs: webPrefs, bumpSnooze: state.bumpSnooze };
+  return file;
 }
 
-export function serializeBackup(state?: StoreData): string {
-  return JSON.stringify(buildBackup(state), null, 2);
+export function serializeBackup(state?: StoreData, opts?: { android?: boolean }): string {
+  return JSON.stringify(buildBackup(state, opts), null, 2);
+}
+
+/** "gymdone-backup-2026-11-12.json": several backups don't overwrite each other. */
+export function backupFilename(android = false, now = new Date()): string {
+  const p = (n: number) => String(n).padStart(2, '0');
+  const date = `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`;
+  return `gymdone-${android ? 'android-' : ''}backup-${date}.json`;
 }
 
 function toRecord<T extends { id: string }>(arr: T[] | undefined): Record<string, T> {
@@ -177,10 +212,16 @@ export function applyBackup(data: BackupFile): void {
     bodyMetrics: toRecord(data.bodyMetrics),
   };
   if (prefs) {
-    // The Android backup format has no slot for web-only prefs; keep this browser's.
+    // Web-only prefs come from the file's web section when it has one (a full web backup);
+    // an Android file has no slot for them, so this browser's are kept.
     const cur = useStore.getState().prefs;
-    patch.prefs = { ...prefs, goalWeightKg: cur.goalWeightKg, bodyFigure: cur.bodyFigure, keepAwake: cur.keepAwake };
+    const web: Partial<UserPrefs> = {};
+    for (const k of WEB_PREF_KEYS) (web as Record<string, unknown>)[k] = cur[k];
+    const fromFile = data.web && typeof data.web.prefs === 'object' && data.web.prefs ? data.web.prefs : {};
+    for (const k of WEB_PREF_KEYS) if (k in fromFile) (web as Record<string, unknown>)[k] = (fromFile as Record<string, unknown>)[k];
+    patch.prefs = { ...prefs, ...web };
   }
+  if (data.web && typeof data.web.bumpSnooze === 'object' && data.web.bumpSnooze) patch.bumpSnooze = data.web.bumpSnooze;
 
   // Safety net: snapshot current data before wiping it, in case the import
   // turns out to be unwanted or the user needs to recover.
@@ -198,8 +239,10 @@ export function applyBackup(data: BackupFile): void {
   useStore.getState().replaceAll(patch);
 }
 
-export function downloadBackup(filename = 'gymdone-backup.json'): void {
-  downloadTextAsJson(serializeBackup(), filename);
+export function downloadBackup(opts: { android?: boolean } = {}): string {
+  const name = backupFilename(!!opts.android);
+  downloadTextAsJson(serializeBackup(undefined, opts), name);
+  return name;
 }
 
 export async function readFileAsText(file: File): Promise<string> {

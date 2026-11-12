@@ -101,3 +101,18 @@ export const Braces = ({ size, className }: IconProps) => (
 export const Info = ({ size, className }: IconProps) => (
   <svg {...S(size)} className={className}><circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" /></svg>
 );
+export const Share = ({ size, className }: IconProps) => (
+  <svg {...S(size)} className={className}><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" /><polyline points="16 6 12 2 8 6" /><line x1="12" y1="2" x2="12" y2="15" /></svg>
+);
+export const Play = ({ size, className }: IconProps) => (
+  <svg {...S(size)} className={className}><polygon points="6 4 20 12 6 20 6 4" /></svg>
+);
+export const Square = ({ size, className }: IconProps) => (
+  <svg {...S(size)} className={className}><rect x="5" y="5" width="14" height="14" rx="2" /></svg>
+);
+export const Note = ({ size, className }: IconProps) => (
+  <svg {...S(size)} className={className}><path d="M4 4h16v12l-4 4H4z" /><polyline points="20 16 16 16 16 20" /><line x1="8" y1="9" x2="16" y2="9" /><line x1="8" y1="13" x2="13" y2="13" /></svg>
+);
+export const Clock = ({ size, className }: IconProps) => (
+  <svg {...S(size)} className={className}><circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15 14" /></svg>
+);

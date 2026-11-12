@@ -1,32 +1,36 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/store';
 import {
   activeSplit,
   activeDays,
   lastCompletedDayNumber,
+  lastRoutineSession,
   nextDay as nextDaySel,
   dayExercisesOf,
-  completedByEpochDay,
+  workoutTagByEpochDay,
   activityByEpochDay,
   restByEpochDay,
   bodyMetricsSorted,
   sessionsByEpochDay,
   sessionLogs,
 } from '../store/selectors';
-import { maxConsecutiveRestDays } from '../domain/rotation';
-import { currentStreakDays } from '../domain/streak';
 import { epochDayLocal, todayEpochDay, WEEKDAY_FULL, MONTH_NAMES } from '../domain/dates';
-import { isTrainingSession, totalVolumeKg, estimateDurationMin } from '../domain/metrics';
-import { kgToDisplay, pillNumber } from '../domain/units';
+import { estimateDurationMin } from '../domain/metrics';
+import { kgToDisplay, pillNumber, displayToKm, distanceUnit, formatDistance, formatPace } from '../domain/units';
+import { trainingEpochDays, weeklyTargetFor, weekStreak, todayPlan, restRunAfter, weekStartOf } from '../domain/schedule';
+import { statsCtx, volumeKg } from '../domain/stats';
+import { plural, formatMinutes, wantsDistance } from '../domain/format';
 import { REST_SESSION_NOTE } from '../types';
-import type { Session } from '../types';
+import type { Session, Units } from '../types';
 import { BigCta, GhostCta, Dialog, Sheet, TrendArrow } from '../components/ui';
 import { Confetti } from '../components/Confetti';
-import { List, ArrowRight, Bed, Check, ChevronRight, ChevronUp, ChevronDown, Plus, Trash, Activity } from '../components/icons';
+import { LogBodySheet } from '../components/BodySheets';
+import { List, ArrowRight, Bed, Check, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Plus, Trash, Activity, Swap } from '../components/icons';
 import { toast } from '../components/toast';
 
 const ACTIVITY_CHIPS = ['Running', 'Walking', 'Cycling', 'Swimming', 'Pickleball', 'Tennis', 'Table Tennis', 'Basketball', 'Soccer', 'Yoga', 'Hiking'];
+const WEEKDAY_NAME = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 function formatElapsed(startedAt: number, now: number): string {
   const mins = Math.max(1, Math.round((now - startedAt) / 60000));
@@ -37,75 +41,63 @@ function formatElapsed(startedAt: number, now: number): string {
 export function HomeScreen() {
   const navigate = useNavigate();
   const state = useStore();
-  const autoLogRestDay = useStore((s) => s.autoLogRestDay);
   const moveDay = useStore((s) => s.moveDay);
   const addDay = useStore((s) => s.addDay);
   const removeDay = useStore((s) => s.removeDay);
+  const duplicateDay = useStore((s) => s.duplicateDay);
   const logActivity = useStore((s) => s.logActivity);
+  const logBodyMetric = useStore((s) => s.logBodyMetric);
   const consumeConfetti = useStore((s) => s.consumeConfetti);
 
   const split = activeSplit(state);
   const days = useMemo(() => activeDays(state), [state]);
   const unit = state.prefs.units;
   const today = todayEpochDay();
-  const autoGuard = useRef<number | null>(null);
 
-  const maxNumber = days.length ? Math.max(...days.map((d) => d.dayNumber)) : 0;
-  const lastNum = lastCompletedDayNumber(state);
-  const rawNextNum = maxNumber ? ((lastNum ?? 0) % maxNumber) + 1 : 0;
-  const rawNextDay = days.find((d) => d.dayNumber === rawNextNum) ?? null;
   const upNext = nextDaySel(state);
+  const lastNum = lastCompletedDayNumber(state);
+  const lastRoutine = lastRoutineSession(state);
 
-  const sessionsArr = Object.values(state.sessions);
-  const loggedToday = sessionsArr.some((s) => s.completedAt != null && epochDayLocal(s.completedAt) === today);
-  const restLoggedToday = sessionsArr.some(
-    (s) => s.completedAt != null && s.notes === REST_SESSION_NOTE && epochDayLocal(s.completedAt) === today,
-  );
-  const todayIsRest = restLoggedToday || (!!rawNextDay?.isRestDay && !loggedToday);
+  const trainingDays = useMemo(() => trainingEpochDays(state.sessions, state.workoutDays, today), [state.sessions, state.workoutDays, today]);
+  const target = weeklyTargetFor(state.prefs, days);
+  const streak = weekStreak(trainingDays, target, today);
+  const trainedToday = trainingDays.has(today);
+  const plan = todayPlan({
+    today,
+    trainedToday,
+    lastRoutineEd: lastRoutine?.completedAt != null ? epochDayLocal(lastRoutine.completedAt) : null,
+    restRun: restRunAfter(days, lastNum),
+    weekdays: state.prefs.trainingWeekdays,
+  });
+  const restToday = plan.kind === 'rest';
 
-  // Auto rest-day logging
-  useEffect(() => {
-    if (!rawNextDay || !rawNextDay.isRestDay) return;
-    if (loggedToday) return;
-    if (autoGuard.current === today) return;
-    autoGuard.current = today;
-    autoLogRestDay(rawNextDay.id);
-  }, [rawNextDay, loggedToday, today, autoLogRestDay]);
-
-  const maxRestGap = maxConsecutiveRestDays(days);
-  const streakDays = currentStreakDays(sessionsArr, maxRestGap);
-  const hasTraining = sessionsArr.some(isTrainingSession);
-  const streakLost = streakDays === 0 && hasTraining;
-
-  const trainableDayCount = days.filter((d) => !d.isRestDay).length;
+  // Routine days done this calendar week (the week the "This week" list is about).
+  const weekStart = weekStartOf(today);
   const weekDoneDayNumbers = useMemo(() => {
     const set = new Set<number>();
     const dayIds = new Set(days.map((d) => d.id));
-    for (const s of sessionsArr) {
+    for (const s of Object.values(state.sessions)) {
       if (s.completedAt == null || s.notes === REST_SESSION_NOTE || s.workoutDayId == null) continue;
       if (!dayIds.has(s.workoutDayId)) continue;
-      if (today - epochDayLocal(s.completedAt) <= 6) {
+      if (epochDayLocal(s.completedAt) >= weekStart) {
         const wd = state.workoutDays[s.workoutDayId];
         if (wd) set.add(wd.dayNumber);
       }
     }
     return set;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.sessions, state.workoutDays, days, today]);
-  const sessionsThisWeek = weekDoneDayNumbers.size;
-
-  const sessionCount = sessionsArr.filter((s) => s.completedAt != null && s.notes !== REST_SESSION_NOTE).length;
+  }, [state.sessions, state.workoutDays, days, weekStart]);
 
   const bm = useMemo(() => bodyMetricsSorted(state).filter((r) => r.bodyweightKg != null), [state]);
   const bwLatest = bm.length ? bm[bm.length - 1].bodyweightKg : null;
   const bwPrev = bm.length > 1 ? bm[bm.length - 2].bodyweightKg : null;
 
-  const completedMap = useMemo(() => completedByEpochDay(state), [state]);
+  const workoutMap = useMemo(() => workoutTagByEpochDay(state), [state]);
   const activityMap = useMemo(() => activityByEpochDay(state), [state]);
   const restDayMap = useMemo(() => restByEpochDay(state), [state]);
   const sessionsByDay = useMemo(() => sessionsByEpochDay(state), [state]);
 
   const [showActivity, setShowActivity] = useState(false);
+  const [weighIn, setWeighIn] = useState(false);
   const [editWeek, setEditWeek] = useState(false);
   const [showConfetti, setShowConfetti] = useState(() => state.confettiArmed);
   const [daySheet, setDaySheet] = useState<{ ed: number; label: string } | null>(null);
@@ -132,6 +124,8 @@ export function HomeScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const upNextLabel = restToday ? 'AFTER YOUR REST DAY' : plan.kind === 'trained' ? 'DONE TODAY · UP NEXT' : 'UP NEXT';
+
   return (
     <div className="pad stack gap-20" style={{ paddingBottom: 32 }}>
       {showConfetti && <Confetti onFinished={() => setShowConfetti(false)} />}
@@ -140,36 +134,39 @@ export function HomeScreen() {
       <div>
         <div className="label-medium muted">TODAY · {weekday}</div>
         <h1 className="display-medium" style={{ margin: '6px 0 0' }}>
-          READY TO<br />GET IT<span className="accent">.</span>
+          {restToday ? <>REST UP.<br />COME BACK<span className="accent"> STRONGER.</span></> : <>READY TO<br />GET IT<span className="accent">.</span></>}
         </h1>
       </div>
 
       {/* Stat strip */}
       <div className="stat-row">
-        <div className="stat-pill" title="Any day with a logged workout or activity keeps the streak alive; scheduled rest days don't break it.">
-          <div className="big">{streakDays > 0 ? `${streakDays}d` : '—'}</div>
-          <div className="label-small muted" style={{ marginTop: 4 }}>{streakLost ? 'Streak lost' : 'Streak'}</div>
+        <div className="stat-pill" title={`Weeks in a row with at least ${plural(target, 'training day')}. Rest days never break it.`}>
+          <div className="big">{streak.current > 0 ? <>{streak.current}<span className="unit">wk</span></> : '—'}</div>
+          {/* Narrow phones: "Streak" alone fits a third of the width; the dash says the rest. */}
+          <div className="label-small muted" style={{ marginTop: 4 }}>{streak.lost ? <>Streak<span className="hide-narrow"> lost</span></> : <><span className="hide-narrow">Week </span>streak</>}</div>
         </div>
-        <div className="stat-pill" title="Routine days completed in the last 7 days.">
-          <div className="big">{sessionsThisWeek}/{trainableDayCount}</div>
-          <div className="label-small muted" style={{ marginTop: 4 }}>Last 7 days</div>
+        <div className="stat-pill" title={`Days with a workout or activity this week, out of your target of ${target}.`}>
+          <div className="big">{streak.thisWeek}/{target}</div>
+          <div className="label-small muted" style={{ marginTop: 4 }}>This week</div>
         </div>
-        <div className="stat-pill">
+        <button className="stat-pill" style={{ color: 'var(--fg)', font: 'inherit' }} onClick={() => setWeighIn(true)} aria-label="Log bodyweight">
           <div className="big row" style={{ justifyContent: 'center', gap: 4 }}>
-            {bwLatest != null ? <span>{pillNumber(kgToDisplay(bwLatest, unit))}<span className="unit">{unit}</span></span> : '—'}
+            {bwLatest != null ? <span>{pillNumber(kgToDisplay(bwLatest, unit))}<span className="unit">{unit}</span></span> : <Plus size={20} />}
             {/* Neutral: whether gaining or losing is "good" depends on the user's goal. */}
             <TrendArrow prev={bwPrev} curr={bwLatest} goodDirection="none" />
           </div>
-          <div className="label-small muted" style={{ marginTop: 4 }}>Weight</div>
-        </div>
+          <div className="label-small muted" style={{ marginTop: 4 }}>{bwLatest != null ? 'Weight' : 'Log weight'}</div>
+        </button>
       </div>
 
-      {/* Rest day card */}
-      {todayIsRest && (
+      {/* Rest day card — only on a planned rest day with nothing logged yet */}
+      {restToday && !activeSess && (
         <div className="card">
           <div className="label-medium accent mb-8">TODAY · REST DAY</div>
           <p className="body-medium muted" style={{ margin: 0 }}>
-            Recovery is when the work pays off. Eat well, sleep, keep it light — you're back at it tomorrow.
+            {plan.reason === 'schedule'
+              ? `Not one of your training days.${plan.nextTrainingWeekday != null ? ` Next up on ${WEEKDAY_NAME[plan.nextTrainingWeekday]}.` : ''} Eat well, sleep, keep it light.`
+              : 'Your routine has a rest day here. Recovery is when the work pays off — your next workout is waiting below whenever you want it.'}
           </p>
         </div>
       )}
@@ -182,7 +179,7 @@ export function HomeScreen() {
           <div className="headline-large" style={{ marginTop: 6 }}>DAY {activeSessDay.dayNumber}</div>
           <div className="title-medium" style={{ opacity: 0.85 }}>{activeSessDay.name}</div>
           <div className="body-small" style={{ opacity: 0.8, marginTop: 8 }}>
-            {activeSessSets} set{activeSessSets === 1 ? '' : 's'} logged{activeSessStarted ? ` · started ${formatElapsed(activeSessStarted, nowTick)} ago` : ''}
+            {plural(activeSessSets, 'set')} logged{activeSessStarted ? ` · started ${formatElapsed(activeSessStarted, nowTick)} ago` : ''}
           </div>
           <div className="row gap-8 mt-16">
             <button
@@ -203,25 +200,36 @@ export function HomeScreen() {
           </div>
         </div>
       ) : upNext ? (
-        <div className="card" style={{ position: 'relative', overflow: 'hidden', background: 'var(--accent-primary)', color: 'var(--on-accent)', borderColor: 'var(--accent-primary)' }}>
-          <div className="watermark" style={{ color: 'var(--on-accent)' }}>D{upNext.dayNumber}</div>
-          <div className="label-medium" style={{ opacity: 0.7 }}>UP NEXT</div>
+        <div
+          className="card"
+          style={
+            restToday
+              ? { position: 'relative', overflow: 'hidden' }
+              : { position: 'relative', overflow: 'hidden', background: 'var(--accent-primary)', color: 'var(--on-accent)', borderColor: 'var(--accent-primary)' }
+          }
+        >
+          <div className="watermark" style={{ color: restToday ? 'var(--fg)' : 'var(--on-accent)' }}>D{upNext.dayNumber}</div>
+          <div className="label-medium" style={{ opacity: 0.7 }}>{upNextLabel}</div>
           <div className="headline-large" style={{ marginTop: 6 }}>DAY {upNext.dayNumber}</div>
           <div className="title-medium" style={{ opacity: 0.85 }}>{upNext.name}</div>
           <div className="body-small" style={{ opacity: 0.8, marginTop: 8 }}>
-            {upNextExs.length} exercises · ~{estimateDurationMin(upNextSets, state.prefs.restSeconds)} min · {upNextSets} sets
+            {plural(upNextExs.length, 'exercise')} · ~{estimateDurationMin(upNextSets, state.prefs.restSeconds)} min · {plural(upNextSets, 'set')}
           </div>
           <div className="row gap-8 mt-16">
             <button
-              className="big-cta grow"
-              style={{ background: 'var(--on-accent)', color: 'var(--accent-primary)', minHeight: 52, fontSize: 'clamp(17px, 5.6vw, 22px)', whiteSpace: 'nowrap' }}
+              className={restToday ? 'ghost-cta grow' : 'big-cta grow'}
+              style={
+                restToday
+                  ? { minHeight: 52, whiteSpace: 'nowrap' }
+                  : { background: 'var(--on-accent)', color: 'var(--accent-primary)', minHeight: 52, fontSize: 'clamp(17px, 5.6vw, 22px)', whiteSpace: 'nowrap' }
+              }
               onClick={() => navigate(upNextExs.length === 0 ? `/day/${upNext.id}` : `/workout/${upNext.id}`)}
             >
-              {upNextExs.length === 0 ? 'Add exercises' : 'Start workout'} <ArrowRight size={20} />
+              {upNextExs.length === 0 ? 'Add exercises' : restToday ? 'Train anyway' : 'Start workout'} <ArrowRight size={20} />
             </button>
             <button
               className="icon-btn"
-              style={{ background: 'var(--on-accent)', color: 'var(--accent-primary)', border: 'none', width: 52, height: 52 }}
+              style={restToday ? { width: 52, height: 52 } : { background: 'var(--on-accent)', color: 'var(--accent-primary)', border: 'none', width: 52, height: 52 }}
               aria-label="Day overview"
               onClick={() => navigate(`/day/${upNext.id}`)}
             >
@@ -243,8 +251,8 @@ export function HomeScreen() {
       </button>
 
       {/* Calendar */}
-      <CalendarCard completedMap={completedMap} activityMap={activityMap} restDays={restDayMap} today={today} sessionCount={sessionCount}
-        canLogToday={!loggedToday && !todayIsRest && !!upNext}
+      <CalendarCard workoutMap={workoutMap} activityMap={activityMap} restDays={restDayMap} today={today}
+        canLogToday={!trainedToday && !!upNext}
         onToday={() => upNext && navigate(`/day/${upNext.id}`)}
         sessionsByDay={sessionsByDay}
         onDaySessions={(ed, label) => setDaySheet({ ed, label })} />
@@ -273,14 +281,17 @@ export function HomeScreen() {
                     <span className="display-small" style={{ flex: '0 0 34px', color: 'var(--fg3)' }}>{d.dayNumber}</span>
                     <div className="stack min0">
                       <span className="title-small">{d.isRestDay ? 'REST' : d.name}</span>
-                      <span className="body-small muted">{d.isRestDay ? 'Recovery day' : `${exs.length} exercises · ${sets} sets`}</span>
+                      <span className="body-small muted">{d.isRestDay ? 'Recovery day' : `${plural(exs.length, 'exercise')} · ${plural(sets, 'set')}`}</span>
                     </div>
                   </button>
                   {editWeek ? (
                     <div className="row gap-4">
-                      <button className="icon-btn bare" disabled={i === 0} onClick={() => moveDay(split.id, d.dayNumber, -1)}><ChevronUp size={18} /></button>
-                      <button className="icon-btn bare" disabled={i === days.length - 1} onClick={() => moveDay(split.id, d.dayNumber, 1)}><ChevronDown size={18} /></button>
-                      <button className="icon-btn bare" style={{ color: 'var(--coral)' }} onClick={() => {
+                      <button className="icon-btn bare" aria-label="Move up" disabled={i === 0} onClick={() => moveDay(split.id, d.dayNumber, -1)}><ChevronUp size={18} /></button>
+                      <button className="icon-btn bare" aria-label="Move down" disabled={i === days.length - 1} onClick={() => moveDay(split.id, d.dayNumber, 1)}><ChevronDown size={18} /></button>
+                      {!d.isRestDay && (
+                        <button className="icon-btn bare hide-narrow" aria-label="Copy day" onClick={() => { duplicateDay(d.id); toast(`${d.name} copied`); }}><Swap size={16} /></button>
+                      )}
+                      <button className="icon-btn bare" aria-label="Remove day" style={{ color: 'var(--coral)' }} onClick={() => {
                         if (!removeDay(d.id)) toast("Can't remove — this day has logged workouts.");
                       }}><Trash size={16} /></button>
                     </div>
@@ -307,6 +318,7 @@ export function HomeScreen() {
 
       {showActivity && (
         <LogActivityDialog
+          unit={unit}
           hasNextDay={!!upNext}
           nextDayLabel={upNext ? `Day ${upNext.dayNumber} · ${upNext.name}` : null}
           onClose={() => setShowActivity(false)}
@@ -315,6 +327,7 @@ export function HomeScreen() {
               activityType: a.activityType,
               durationMin: a.durationMin,
               notes: a.notes,
+              distanceKm: a.distanceKm,
               workoutDayId: a.countAsToday && upNext ? upNext.id : null,
             });
             setShowActivity(false);
@@ -323,36 +336,50 @@ export function HomeScreen() {
         />
       )}
 
+      {weighIn && <LogBodySheet unit={unit} onClose={() => setWeighIn(false)} onSave={(m) => { logBodyMetric(m); toast('Logged'); }} />}
+
       {daySheet && <DaySessionsSheet ed={daySheet.ed} label={daySheet.label} onClose={() => setDaySheet(null)} />}
     </div>
   );
 }
 
 function CalendarCard({
-  completedMap,
+  workoutMap,
   activityMap,
   restDays,
   today,
-  sessionCount,
   canLogToday,
   onToday,
   sessionsByDay,
   onDaySessions,
 }: {
-  completedMap: Map<number, number>;
+  workoutMap: Map<number, string>;
   activityMap: Map<number, string>;
   restDays: Set<number>;
   today: number;
-  sessionCount: number;
   canLogToday: boolean;
   onToday: () => void;
   sessionsByDay: Map<number, Session[]>;
   onDaySessions: (ed: number, label: string) => void;
 }) {
+  // 0 = this month, -1 = last month, … Paging stops at the month of the first session.
+  const [offset, setOffset] = useState(0);
   const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
-  const first = new Date(year, month, 1);
+  const view = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+  const year = view.getFullYear();
+  const month = view.getMonth();
+  const first = view;
+  const firstEd = Math.min(...sessionsByDay.keys());
+  const earliest = Number.isFinite(firstEd) ? new Date(firstEd * 86400000) : now;
+  const canGoBack = year * 12 + month > earliest.getUTCFullYear() * 12 + earliest.getUTCMonth();
+  // Sessions in the month on screen (rest-day logs aren't sessions), not the all-time total.
+  let monthSessions = 0;
+  for (const [ed, list] of sessionsByDay) {
+    const d = new Date(ed * 86400000);
+    if (d.getUTCFullYear() === year && d.getUTCMonth() === month) {
+      monthSessions += list.filter((s) => s.notes !== REST_SESSION_NOTE).length;
+    }
+  }
   const startWeekday = first.getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
@@ -362,27 +389,40 @@ function CalendarCard({
 
   return (
     <div className="card">
-      <div className="row-between mb-12">
-        <span className="title-medium">{MONTH_NAMES[month]} {year}</span>
-        <span className="body-small muted">{sessionCount} session{sessionCount === 1 ? '' : 's'}</span>
+      <div className="row-between gap-8 mb-12">
+        <div className="stack min0">
+          <span className="title-medium">{MONTH_NAMES[month]} {year}</span>
+          <span className="body-small muted">{plural(monthSessions, 'session')} this month</span>
+        </div>
+        <div className="row gap-4">
+          <button className="icon-btn" disabled={!canGoBack} style={{ opacity: canGoBack ? 1 : 0.35 }} onClick={() => setOffset((o) => o - 1)} aria-label="Previous month">
+            <ChevronLeft size={18} />
+          </button>
+          <button className="icon-btn" disabled={offset === 0} style={{ opacity: offset === 0 ? 0.35 : 1 }} onClick={() => setOffset((o) => Math.min(0, o + 1))} aria-label="Next month">
+            <ChevronRight size={18} />
+          </button>
+        </div>
+      </div>
+      <div className="cal-grid cal-weekdays" aria-hidden="true">
+        {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((w, i) => <span key={i}>{w}</span>)}
       </div>
       <div className="cal-grid">
         {cells.map((d, i) => {
           if (d == null) return <div key={i} className="cal-cell empty" />;
           const ed = epochDayLocal(new Date(year, month, d).getTime());
-          const workoutNum = completedMap.get(ed);
+          const workout = workoutMap.get(ed);
           const activity = activityMap.get(ed);
-          const done = workoutNum != null || activity != null;
+          const done = workout != null || activity != null;
           // A logged rest day is real data, but it is not a completed workout —
           // mark it distinctly instead of filling the cell as if it were one.
           const rested = !done && restDays.has(ed);
           const isToday = ed === today;
           const daySessions = sessionsByDay.get(ed);
           const tag =
-            workoutNum != null
+            workout != null
               ? activity != null
-                ? `D${workoutNum}+`
-                : `D${workoutNum}`
+                ? `${workout}+`
+                : workout
               : activity
               ? activity.slice(0, 3).toUpperCase()
               : rested
@@ -396,6 +436,7 @@ function CalendarCard({
               className={`cal-cell ${done ? 'done' : ''} ${rested ? 'rested' : ''} ${isToday && !done && !rested ? 'today' : ''}`}
               disabled={!clickable}
               style={{ cursor: clickable ? 'pointer' : 'default' }}
+              aria-label={`${MONTH_NAMES[month]} ${d}${tag ? `, ${tag}` : ''}`}
               onClick={() => {
                 if (hasSessions) onDaySessions(ed, `${MONTH_NAMES[month]} ${d}`);
                 else onToday();
@@ -434,21 +475,40 @@ function CalendarCard({
   );
 }
 
+/** Minutes as typed: digits and one decimal place ("30.5"), never a dropped point ("305"). */
+function cleanMinutes(raw: string): string {
+  const [whole, ...rest] = raw.replace(/[^\d.]/g, '').split('.');
+  return rest.length ? `${whole.slice(0, 4)}.${rest.join('').slice(0, 1)}` : whole.slice(0, 4);
+}
+
+/** Distance as typed: up to two decimals. */
+function cleanDistance(raw: string): string {
+  const [whole, ...rest] = raw.replace(/[^\d.]/g, '').split('.');
+  return rest.length ? `${whole.slice(0, 3)}.${rest.join('').slice(0, 2)}` : whole.slice(0, 3);
+}
+
 function LogActivityDialog({
+  unit,
   hasNextDay,
   nextDayLabel,
   onClose,
   onSave,
 }: {
+  unit: Units;
   hasNextDay: boolean;
   nextDayLabel: string | null;
   onClose: () => void;
-  onSave: (a: { activityType: string; durationMin: number | null; notes: string | null; countAsToday: boolean }) => void;
+  onSave: (a: { activityType: string; durationMin: number | null; distanceKm: number | null; notes: string | null; countAsToday: boolean }) => void;
 }) {
   const [name, setName] = useState('');
   const [duration, setDuration] = useState('');
+  const [distance, setDistance] = useState('');
   const [notes, setNotes] = useState('');
   const [countAsToday, setCountAsToday] = useState(false);
+  const showDistance = wantsDistance(name);
+  const km = showDistance && Number(distance) > 0 ? displayToKm(Number(distance), unit) : null;
+  const durationMin = Number(duration) > 0 ? Math.round(Number(duration) * 10) / 10 : null;
+  const pace = formatPace(durationMin, km, unit);
 
   return (
     <Dialog onClose={onClose}>
@@ -459,13 +519,25 @@ function LogActivityDialog({
         ))}
       </div>
       <input className="field mb-12" placeholder="Activity name" value={name} onChange={(e) => setName(e.target.value)} />
-      <input
-        className="field mb-12"
-        placeholder="Duration (min)"
-        inputMode="numeric"
-        value={duration}
-        onChange={(e) => setDuration(e.target.value.replace(/\D/g, '').slice(0, 4))}
-      />
+      <div className="row gap-8 mb-12">
+        <input
+          className="field"
+          placeholder="Duration (min)"
+          inputMode="decimal"
+          value={duration}
+          onChange={(e) => setDuration(cleanMinutes(e.target.value))}
+        />
+        {showDistance && (
+          <input
+            className="field"
+            placeholder={`Distance (${distanceUnit(unit)})`}
+            inputMode="decimal"
+            value={distance}
+            onChange={(e) => setDistance(cleanDistance(e.target.value))}
+          />
+        )}
+      </div>
+      {pace && <p className="body-small muted" style={{ margin: '-4px 0 12px' }}>Pace {pace}</p>}
       <textarea className="field mb-12" placeholder="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
       {hasNextDay && (
         <>
@@ -485,7 +557,8 @@ function LogActivityDialog({
           disabled={!name.trim()}
           onClick={() => onSave({
             activityType: name.trim(),
-            durationMin: duration ? Number(duration) : null,
+            durationMin,
+            distanceKm: km,
             notes: notes.trim() || null,
             countAsToday,
           })}
@@ -508,8 +581,10 @@ function DaySessionsSheet({
 }) {
   const navigate = useNavigate();
   const state = useStore();
+  const deleteSession = useStore((s) => s.deleteSession);
   const unit = state.prefs.units;
   const sessions = sessionsByEpochDay(state).get(ed) ?? [];
+  const ctx = statsCtx(state);
 
   return (
     <Sheet onClose={onClose}>
@@ -520,42 +595,54 @@ function DaySessionsSheet({
           const time = s.completedAt != null
             ? new Date(s.completedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
             : '';
+          const open = () => { onClose(); navigate(`/session/${s.id}`); };
 
           if (s.notes === REST_SESSION_NOTE) {
             const wd = s.workoutDayId ? state.workoutDays[s.workoutDayId] : null;
             return (
-              <div key={s.id} className="card" style={{ padding: 14 }}>
+              <div key={s.id} className="card row-between" style={{ padding: 14 }}>
                 <div className="stack">
                   <span className="title-small">Rest day</span>
                   {wd && <span className="body-small muted">{wd.name}</span>}
                 </div>
+                <button className="icon-btn bare" style={{ color: 'var(--coral)' }} aria-label="Remove rest day" onClick={() => deleteSession(s.id)}>
+                  <Trash size={16} />
+                </button>
               </div>
             );
           }
 
           // Imported workouts carry sets but no routine day; show them as workouts too.
           const logs = sessionLogs(state, s.id);
-          if (s.workoutDayId != null || logs.length > 0) {
+          if (!s.activityType && (s.workoutDayId != null || logs.length > 0)) {
             const wd = s.workoutDayId ? state.workoutDays[s.workoutDayId] : null;
-            const vol = Math.round(kgToDisplay(totalVolumeKg(logs), unit));
+            const vol = Math.round(kgToDisplay(volumeKg(logs, ctx), unit));
             return (
-              <button key={s.id} className="card row-between" style={{ padding: 14, color: 'var(--fg)', textAlign: 'left' }} onClick={() => { onClose(); navigate(`/complete/${s.id}`); }}>
-                <div className="stack">
+              <button key={s.id} className="card row-between" style={{ padding: 14, color: 'var(--fg)', textAlign: 'left' }} onClick={open}>
+                <div className="stack min0">
                   <span className="title-small">{wd?.name ?? s.notes ?? 'Workout'}</span>
-                  <span className="body-small muted">{logs.length} sets · {vol} {unit} · {time}</span>
+                  <span className="body-small muted">{plural(logs.length, 'set')} · {vol.toLocaleString()} {unit} · {time}</span>
                 </div>
                 <ChevronRight size={18} className="muted" />
               </button>
             );
           }
 
+          const bits = [
+            s.durationMin ? formatMinutes(s.durationMin) : null,
+            s.distanceKm ? formatDistance(s.distanceKm, unit) : null,
+            formatPace(s.durationMin, s.distanceKm, unit),
+            time,
+          ].filter(Boolean);
           return (
-            <div key={s.id} className="card" style={{ padding: 14 }}>
-              <div className="stack">
+            <button key={s.id} className="card row-between" style={{ padding: 14, color: 'var(--fg)', textAlign: 'left' }} onClick={open}>
+              <div className="stack min0">
                 <span className="title-small">{s.activityType ?? 'Activity'}</span>
-                <span className="body-small muted">{s.durationMin ? `${s.durationMin} min · ` : ''}{time}</span>
+                <span className="body-small muted">{bits.join(' · ')}</span>
+                {s.notes && <span className="body-small muted ellipsis">{s.notes}</span>}
               </div>
-            </div>
+              <ChevronRight size={18} className="muted" />
+            </button>
           );
         })}
       </div>

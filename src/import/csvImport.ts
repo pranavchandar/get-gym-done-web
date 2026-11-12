@@ -225,7 +225,9 @@ export function parseImport(text: string): ParsedImport {
 // "Bench Press (Barbell)" and "Barbell Bench Press" are the same lift: compare the
 // set of words, with a few spelling variants folded together.
 const SYNONYM: Record<string, string> = {
-  db: 'dumbbell', dumbbells: 'dumbbell', bb: 'barbell', bodyweight: 'body', weight: '',
+  db: 'dumbbell', dumbbells: 'dumbbell', bb: 'barbell', bodyweight: 'body', weight: '', weighted: '',
+  bicep: 'biceps', tricep: 'triceps', overhead: 'shoulder', military: 'shoulder', ohp: 'shoulder press',
+  cable: 'cable', pushdowns: 'pushdown', pressdown: 'pushdown', pressdowns: 'pushdown', standing: '',
   curls: 'curl', raises: 'raise', presses: 'press', rows: 'row', extensions: 'extension',
   flyes: 'fly', flys: 'fly', flye: 'fly', pulldowns: 'pulldown', pushups: 'pushup', pullups: 'pullup',
   chinups: 'chinup', squats: 'squat', lunges: 'lunge', deadlifts: 'deadlift', dips: 'dip',
@@ -241,12 +243,63 @@ export function nameKey(name: string): string {
         .replace(/chin[\s-]?ups?/g, 'chinup')
         .replace(/[^a-z0-9]+/g, ' ')
         .split(' ')
-        .map((w) => SYNONYM[w] ?? w)
+        .flatMap((w) => (SYNONYM[w] ?? w).split(' '))
         .filter(Boolean),
     ),
   ]
+    // A curl is a biceps curl unless it says otherwise: "Bicep Curl" = "Curl".
+    .filter((w, _i, all) => !(w === 'biceps' && all.includes('curl')))
     .sort()
     .join(' ');
+}
+
+/** Equipment named in an exercise's own words ("Bench Press (Dumbbell)", "Cable Fly"). */
+const EQUIPMENT_WORDS: [RegExp, string][] = [
+  [/smith/i, 'Smith Machine'],
+  [/\bez[\s-]?bar\b|\bez\b/i, 'EZ Bar'],
+  [/trap[\s-]?bar|hex[\s-]?bar/i, 'Trap Bar'],
+  [/barbell|\bbb\b/i, 'Barbell'],
+  [/dumbbell|\bdb\b/i, 'Dumbbell'],
+  [/kettlebell|\bkb\b/i, 'Kettlebell'],
+  [/cable|rope|pulley/i, 'Cable'],
+  [/band/i, 'Band'],
+  [/machine|lever|leverage|sled|hack/i, 'Machine'],
+  [/assisted/i, 'Assisted'],
+  [/weighted/i, 'Weighted'],
+  [/body ?weight|push[\s-]?up|pull[\s-]?up|chin[\s-]?up|\bdip|plank|crunch|sit[\s-]?up/i, 'Bodyweight'],
+];
+export function guessEquipment(name: string): string {
+  return EQUIPMENT_WORDS.find(([re]) => re.test(name))?.[1] ?? 'Other';
+}
+
+/** The muscle an unfamiliar exercise most likely trains, from the words in its name. */
+const MUSCLE_WORDS: [RegExp, string][] = [
+  [/calf|calves/i, 'Calves'],
+  [/hip thrust|glute|kickback|bridge/i, 'Glutes'],
+  [/leg curl|hamstring|romanian|rdl|stiff[\s-]?leg|good morning|nordic/i, 'Hamstrings'],
+  [/deadlift/i, 'Posterior Chain'],
+  [/squat|leg press|lunge|leg extension|step[\s-]?up|split squat/i, 'Quads'],
+  [/adduct/i, 'Adductors'],
+  [/abduct/i, 'Abductors'],
+  [/pushdown|tricep|skull|kickback|close[\s-]?grip bench|dip/i, 'Triceps'],
+  [/curl/i, 'Biceps'],
+  [/lateral raise|side raise/i, 'Side Delts'],
+  [/rear delt|face pull|reverse fly/i, 'Rear Delts'],
+  [/front raise/i, 'Front Delts'],
+  [/shoulder|overhead press|military|arnold|ohp/i, 'Shoulders'],
+  [/shrug/i, 'Traps'],
+  [/pulldown|pull[\s-]?up|chin[\s-]?up|pullover|lat\b/i, 'Lats'],
+  [/row/i, 'Mid Back'],
+  [/back extension|hyperextension/i, 'Lower Back'],
+  [/incline (bench|press|dumbbell press|fly)/i, 'Upper Chest'],
+  [/bench|chest|fly|flye|push[\s-]?up|pec/i, 'Chest'],
+  [/crunch|sit[\s-]?up|plank|leg raise|ab |abs|core|russian twist/i, 'Abs'],
+  [/oblique|woodchop|side bend/i, 'Obliques'],
+  [/wrist|forearm|grip/i, 'Forearms'],
+  [/run|cycle|bike|row(ing)? machine|elliptical|cardio|jump rope|treadmill/i, 'Cardio'],
+];
+export function guessMuscle(name: string): string | null {
+  return MUSCLE_WORDS.find(([re]) => re.test(name))?.[1] ?? null;
 }
 
 const FITNOTES_CATEGORY: Record<string, string> = {
@@ -290,8 +343,16 @@ export function planImport(
     if (!m) return undefined;
     const ex = byKey.get(nameKey(m[1]));
     if (!ex) return undefined;
-    const want = nameKey(m[2]);
-    return want && nameKey(ex.equipment) === want ? ex : undefined;
+    // Every word of the exercise's equipment appears in the bracket: "(Cable - Straight Bar)".
+    const want = new Set(nameKey(m[2]).split(' '));
+    const eq = nameKey(ex.equipment).split(' ').filter(Boolean);
+    return eq.length && eq.every((w) => want.has(w)) ? ex : undefined;
+  };
+
+  // "Bicep Curl (Dumbbell)" -> "Dumbbell Bicep Curl": the bracket read as part of the name.
+  const flattened = (name: string): string | null => {
+    const m = name.match(/^(.*?)\s*\(([^)]+)\)\s*$/);
+    return m ? `${m[2]} ${m[1]}` : null;
   };
 
   const resolved = new Map<string, string>(); // source name -> exercise id
@@ -302,10 +363,12 @@ export function planImport(
     const hit = resolved.get(name);
     if (hit) return hit;
     const key = nameKey(name);
-    let ex = byKey.get(key) ?? byBareName(name);
+    const flat = flattened(name);
+    const flatKey = flat ? nameKey(flat) : null;
+    let ex = byKey.get(key) ?? byBareName(name) ?? (flatKey ? byKey.get(flatKey) : undefined);
     if (ex) matched++;
     else {
-      const lib = libByKey.get(key);
+      const lib = libByKey.get(key) ?? (flatKey ? libByKey.get(flatKey) : undefined);
       if (lib) {
         ex = libraryToExercise(lib);
         matched++;
@@ -313,11 +376,11 @@ export function planImport(
         ex = {
           id: localId(),
           name,
-          primaryMuscle: (category && FITNOTES_CATEGORY[category.toLowerCase()]) || 'Other',
+          primaryMuscle: (category && FITNOTES_CATEGORY[category.toLowerCase()]) || guessMuscle(name) || 'Other',
           secondaryMuscles: [],
           illustrationFilename: '',
           formCues: [],
-          equipment: 'Other',
+          equipment: guessEquipment(name),
           defaultSets: 3,
           defaultRepsLow: 8,
           defaultRepsHigh: 12,

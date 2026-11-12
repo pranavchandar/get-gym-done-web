@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { HashRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { useStore } from './store/store';
 import { applyTheme } from './theme/apply';
-import { Toaster } from './components/toast';
+import { Toaster, clearToasts } from './components/toast';
 import { Home as HomeIcon, Dumbbell, BarChart, Gear } from './components/icons';
 
 import { SplashScreen } from './screens/Splash';
@@ -16,19 +16,76 @@ import { SettingsScreen } from './screens/Settings';
 import { DayOverviewScreen } from './screens/DayOverview';
 import { ActiveWorkoutScreen } from './screens/ActiveWorkout';
 import { WorkoutCompleteScreen } from './screens/WorkoutComplete';
+import { SessionDetailScreen } from './screens/SessionDetail';
 
 function ThemeManager() {
   const theme = useStore((s) => s.prefs.theme);
   const accent = useStore((s) => s.prefs.accent);
+  const textSize = useStore((s) => s.prefs.textSize ?? 'default');
   useEffect(() => {
     applyTheme(theme, accent);
   }, [theme, accent]);
+  useEffect(() => {
+    document.documentElement.setAttribute('data-text', textSize);
+  }, [textSize]);
   useEffect(() => {
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
     const handler = () => applyTheme(theme, accent);
     mq.addEventListener('change', handler);
     return () => mq.removeEventListener('change', handler);
   }, [theme, accent]);
+  return null;
+}
+
+const LAST_SEEN_KEY = 'get-gym-done:last-seen';
+/** Away this long, the app opens on Today rather than on whatever screen was left open. */
+const STALE_MS = 30 * 60 * 1000;
+/** Screens that are about one moment: a finished workout's summary, a day's overview. */
+const MOMENTARY = /^\/(complete|day|session)\//;
+
+/**
+ * Coming back to the app after a while lands on Today. Reopening on last week's summary or
+ * on a day overview led people to start the wrong day. A workout in progress is resumed.
+ */
+function ReturnToToday() {
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const pathRef = useRef(pathname);
+  pathRef.current = pathname;
+  useEffect(() => {
+    const read = () => {
+      try {
+        return Number(localStorage.getItem(LAST_SEEN_KEY)) || 0;
+      } catch {
+        return 0;
+      }
+    };
+    const stamp = () => {
+      try {
+        localStorage.setItem(LAST_SEEN_KEY, String(Date.now()));
+      } catch {
+        /* ignore */
+      }
+    };
+    const check = () => {
+      const last = read();
+      const onboarded = useStore.getState().prefs.onboardingComplete;
+      if (onboarded && last && Date.now() - last > STALE_MS && MOMENTARY.test(pathRef.current)) {
+        navigate('/home', { replace: true });
+      }
+      stamp();
+    };
+    check();
+    const onVis = () => (document.visibilityState === 'visible' ? check() : stamp());
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('pagehide', stamp);
+    const id = window.setInterval(stamp, 60000);
+    return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('pagehide', stamp);
+      window.clearInterval(id);
+    };
+  }, [navigate]);
   return null;
 }
 
@@ -39,6 +96,7 @@ function MainShell() {
   const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     scrollRef.current?.scrollTo(0, 0);
+    clearToasts(); // tabs share one route, so the route-change clear doesn't fire
   }, [tab]);
   const tabs: { key: Tab; label: string; icon: JSX.Element }[] = [
     { key: 'today', label: 'Today', icon: <HomeIcon size={24} /> },
@@ -91,6 +149,7 @@ export function App() {
   return (
     <HashRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <ThemeManager />
+      <ReturnToToday />
       <div className="app-frame">
         <Routes>
           <Route path="/" element={<Root />} />
@@ -110,6 +169,7 @@ export function App() {
           <Route path="/day/:dayId" element={<DayOverviewScreen />} />
           <Route path="/workout/:dayId" element={<ActiveWorkoutScreen />} />
           <Route path="/complete/:sessionId" element={<WorkoutCompleteScreen />} />
+          <Route path="/session/:sessionId" element={<SessionDetailScreen />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>

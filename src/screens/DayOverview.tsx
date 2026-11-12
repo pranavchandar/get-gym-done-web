@@ -6,6 +6,8 @@ import { estimateDurationMin } from '../domain/metrics';
 import { TopBar, BigCta, GhostCta, SegTabs, Sheet, InitialTile, PillChip, Stepper } from '../components/ui';
 import { Swap, Edit, Bed, Check, ArrowRight, ChevronUp, ChevronDown, Trash, Plus } from '../components/icons';
 import { ExercisePicker } from '../components/ExercisePicker';
+import { plural } from '../domain/format';
+import { toast } from '../components/toast';
 
 export function DayOverviewScreen() {
   const navigate = useNavigate();
@@ -64,7 +66,7 @@ export function DayOverviewScreen() {
             <div className="label-medium muted">DAY {day.dayNumber} OF {total}</div>
             <h1 className="display-small" style={{ margin: '6px 0 12px' }}>{day.name}</h1>
             <div className="row gap-8 mb-16">
-              <PillChip label={`${exs.length} exercises`} variant="surface" />
+              <PillChip label={plural(exs.length, 'exercise')} variant="surface" />
               <PillChip label={`~${estimateDurationMin(totalSets, state.prefs.restSeconds)} min`} variant="surface" />
             </div>
 
@@ -86,7 +88,7 @@ export function DayOverviewScreen() {
                         <span className="title-small">{ex?.name ?? 'Exercise'}</span>
                         <span className="body-small muted">{ex?.primaryMuscle ?? ''}</span>
                       </div>
-                      <span className="pill pill-outline">{de.prescribedSets}×{de.prescribedRepsLow}-{de.prescribedRepsHigh}</span>
+                      <span className="pill pill-outline">{de.prescribedSets}×{de.prescribedRepsLow}-{de.prescribedRepsHigh}{ex?.timed ? 's' : ''}</span>
                     </div>
                   );
                 })}
@@ -156,6 +158,8 @@ function EditExercisesSheet({ dayId, onClose }: { dayId: string; onClose: () => 
   const state = useStore();
   const day = state.workoutDays[dayId];
   const save = useStore((s) => s.saveDayExercises);
+  const duplicateDay = useStore((s) => s.duplicateDay);
+  const [replacing, setReplacing] = useState<number | null>(null);
   const [name, setName] = useState(day?.name ?? '');
   const [rows, setRows] = useState<Row[]>(
     () => dayExercisesOf(state, dayId).map((de) => ({
@@ -187,9 +191,10 @@ function EditExercisesSheet({ dayId, onClose }: { dayId: string; onClose: () => 
               <div className="row-between gap-8 mb-8">
                 <span className="title-small min0">{ex?.name ?? 'Exercise'}</span>
                 <div className="row gap-4">
-                  <button className="icon-btn bare" disabled={i === 0} onClick={() => move(i, -1)}><ChevronUp size={16} /></button>
-                  <button className="icon-btn bare" disabled={i === rows.length - 1} onClick={() => move(i, 1)}><ChevronDown size={16} /></button>
-                  <button className="icon-btn bare" style={{ color: 'var(--coral)' }} onClick={() => setRows(rows.filter((_, k) => k !== i))}><Trash size={16} /></button>
+                  <button className="icon-btn bare" aria-label="Move up" disabled={i === 0} onClick={() => move(i, -1)}><ChevronUp size={16} /></button>
+                  <button className="icon-btn bare" aria-label="Move down" disabled={i === rows.length - 1} onClick={() => move(i, 1)}><ChevronDown size={16} /></button>
+                  <button className="icon-btn bare" aria-label="Replace exercise" onClick={() => setReplacing(i)}><Swap size={16} /></button>
+                  <button className="icon-btn bare" aria-label="Remove exercise" style={{ color: 'var(--coral)' }} onClick={() => setRows(rows.filter((_, k) => k !== i))}><Trash size={16} /></button>
                 </div>
               </div>
               <div className="rx-grid">
@@ -211,15 +216,38 @@ function EditExercisesSheet({ dayId, onClose }: { dayId: string; onClose: () => 
         })}
         <button className="ghost-cta" onClick={() => setPicking(true)}><Plus size={18} /> Add exercise</button>
       </div>
-      <div className="mt-20">
+      <div className="stack gap-8 mt-20">
         <BigCta onClick={() => { save(dayId, name.trim() || day?.name || 'Day', rows); onClose(); }}>Save</BigCta>
+        <GhostCta
+          onClick={() => {
+            save(dayId, name.trim() || day?.name || 'Day', rows);
+            duplicateDay(dayId);
+            toast(`Copied — the copy is the last day of your routine`);
+            onClose();
+          }}
+        >
+          Save &amp; copy this day
+        </GhostCta>
       </div>
+
+      {replacing != null && (
+        <ExercisePicker
+          title="Replace exercise"
+          onClose={() => setReplacing(null)}
+          onPick={(id) => {
+            // Same slot, same sets and reps: only the movement changes.
+            setRows((prev) => prev.map((r, k) => (k === replacing ? { ...r, exerciseId: id } : r)));
+            setReplacing(null);
+          }}
+        />
+      )}
 
       {picking && (
         <ExercisePicker
           onClose={() => setPicking(false)}
           onPick={(id) => {
-            const ex = state.exercises[id];
+            // Live store, not this render's snapshot: a just-created custom exercise isn't in it yet.
+            const ex = useStore.getState().exercises[id];
             setRows((prev) => [...prev, { exerciseId: id, sets: ex?.defaultSets ?? 3, repsLow: ex?.defaultRepsLow ?? 8, repsHigh: ex?.defaultRepsHigh ?? 12 }]);
           }}
         />

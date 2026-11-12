@@ -1,22 +1,25 @@
 import { useMemo, useState } from 'react';
 import { useStore } from '../store/store';
-import { activeDays, sessionLogs } from '../store/selectors';
-import { maxConsecutiveRestDays } from '../domain/rotation';
-import { currentStreakDays, longestStreakDays } from '../domain/streak';
+import { activeDays } from '../store/selectors';
 import { epochDayLocal, todayEpochDay, formatDateShort } from '../domain/dates';
-import { totalVolumeKg, compactNumber } from '../domain/metrics';
-import { kgToDisplay, formatWeight } from '../domain/units';
+import { compactNumber } from '../domain/metrics';
+import { kgToDisplay, formatWeight, pillNumber } from '../domain/units';
+import { trainingEpochDays, weeklyTargetFor, weekStreak } from '../domain/schedule';
+import { statsCtx, volumeKg, trainingSessions, logsBySession, exerciseBests, workingSets, setLoadKg } from '../domain/stats';
+import type { ExerciseBests } from '../domain/stats';
+import { plural, formatSet, formatSeconds } from '../domain/format';
 import { REST_SESSION_NOTE } from '../types';
-import type { SetLog } from '../types';
+import type { Units, Exercise } from '../types';
 import { Avatar } from '../components/Avatar';
-import { Sparkline, DualSparkline } from '../components/Sparkline';
+import { TrendChart } from '../components/TrendChart';
+import type { TrendPoint } from '../components/TrendChart';
 import { Heatmap } from '../components/Heatmap';
 import { TrendArrow, Sheet, BigCta, GhostCta } from '../components/ui';
 import { ChevronDown, ChevronUp, Plus } from '../components/icons';
 import { ACCENT_PALETTES } from '../theme/palettes';
 import { MuscleBalanceCard } from '../components/MuscleBalance';
 import { OneRmSection } from '../components/OneRm';
-import { displayToKg, pillNumber } from '../domain/units';
+import { LogBodySheet, GoalSheet } from '../components/BodySheets';
 
 const RANGES: { key: string; label: string; days: number }[] = [
   { key: '1M', label: '1M', days: 30 },
@@ -26,6 +29,15 @@ const RANGES: { key: string; label: string; days: number }[] = [
   { key: 'All', label: 'All', days: Infinity },
 ];
 
+type BodyKey = 'bodyweightKg' | 'bodyFatPct' | 'muscleMassKg';
+
+/** "+2.4 lbs", "−1.1 pts": a change in the metric's own unit, never a percent of a percent. */
+function signed(v: number, suffix: string): string {
+  const r = Math.round(v * 10) / 10;
+  if (r === 0) return `±0 ${suffix}`;
+  return `${r > 0 ? '+' : '−'}${Math.abs(r)} ${suffix}`;
+}
+
 export function ProfileScreen() {
   const state = useStore();
   const unit = state.prefs.units;
@@ -33,6 +45,7 @@ export function ProfileScreen() {
   const logBodyMetric = useStore((s) => s.logBodyMetric);
   const setPrefs = useStore((s) => s.setPrefs);
   const goalKg = state.prefs.goalWeightKg ?? null;
+  const show1RM = state.prefs.show1RM !== false;
   const [goalOpen, setGoalOpen] = useState(false);
 
   const [range, setRange] = useState('3M');
@@ -41,15 +54,16 @@ export function ProfileScreen() {
   const [loggingBody, setLoggingBody] = useState(false);
   const [prExercise, setPrExercise] = useState<string | null>(null);
 
-  const sessions = Object.values(state.sessions);
-  const completedTraining = sessions.filter((s) => s.completedAt != null && s.notes !== REST_SESSION_NOTE);
-  const sessionCount = completedTraining.length;
+  const ctx = useMemo(() => statsCtx(state), [state]);
+  const sessionsAsc = useMemo(() => trainingSessions(state.sessions), [state.sessions]);
+  const bySession = useMemo(() => logsBySession(state.setLogs), [state.setLogs]);
+  const sessionCount = sessionsAsc.length;
 
-  const maxRestGap = maxConsecutiveRestDays(activeDays(state));
-  const streak = currentStreakDays(sessions, maxRestGap);
-  const longestStreak = longestStreakDays(sessions, maxRestGap);
+  const today = todayEpochDay();
+  const trainingDays = useMemo(() => trainingEpochDays(state.sessions, state.workoutDays, today), [state.sessions, state.workoutDays, today]);
+  const streak = weekStreak(trainingDays, weeklyTargetFor(state.prefs, activeDays(state)), today);
 
-  const totalVolKg = useMemo(() => totalVolumeKg(Object.values(state.setLogs)), [state.setLogs]);
+  const totalVolKg = useMemo(() => volumeKg(Object.values(state.setLogs), ctx), [state.setLogs, ctx]);
 
   const now = Date.now();
   const rangeDef = RANGES.find((r) => r.key === range)!;
@@ -57,7 +71,7 @@ export function ProfileScreen() {
 
   // body metrics
   const bm = useMemo(() => Object.values(state.bodyMetrics).sort((a, b) => a.recordedAt - b.recordedAt), [state.bodyMetrics]);
-  const latestOf = (key: 'bodyweightKg' | 'bodyFatPct' | 'muscleMassKg') => {
+  const latestOf = (key: BodyKey) => {
     const rows = bm.filter((r) => r[key] != null);
     return { curr: rows.length ? (rows[rows.length - 1][key] as number) : null, prev: rows.length > 1 ? (rows[rows.length - 2][key] as number) : null };
   };
@@ -65,69 +79,55 @@ export function ProfileScreen() {
   const fat = latestOf('bodyFatPct');
   const muscle = latestOf('muscleMassKg');
 
-  const windowSeries = (key: 'bodyweightKg' | 'bodyFatPct' | 'muscleMassKg') => {
-    const rows = bm.filter((r) => r[key] != null && r.recordedAt >= cutoff);
-    return rows.map((r) => r[key] as number);
-  };
+  const windowSeries = (key: BodyKey): TrendPoint[] =>
+    bm.filter((r) => r[key] != null && r.recordedAt >= cutoff).map((r) => ({ at: r.recordedAt, value: r[key] as number }));
 
-  // exercise progression + PRs
-  const exerciseSessionData = useMemo(() => {
-    const completedSessions = sessions
-      .filter((s) => s.completedAt != null)
-      .sort((a, b) => (a.completedAt as number) - (b.completedAt as number));
-    const byExercise = new Map<string, { at: number; topWeight: number; reps: number }[]>();
-    for (const se of completedSessions) {
-      const logs = sessionLogs(state, se.id);
-      const byEx = new Map<string, SetLog[]>();
-      for (const l of logs) {
-        const arr = byEx.get(l.exerciseId);
-        if (arr) arr.push(l);
-        else byEx.set(l.exerciseId, [l]);
-      }
-      for (const [exId, exLogs] of byEx) {
-        let top = exLogs[0];
-        for (const l of exLogs) if (l.weightKg > top.weightKg) top = l;
-        if (!byExercise.has(exId)) byExercise.set(exId, []);
-        byExercise.get(exId)!.push({ at: se.completedAt as number, topWeight: top.weightKg, reps: top.reps });
-      }
-    }
-    return byExercise;
-  }, [sessions, state]);
+  // per-exercise bests and the sessions they came from
+  const bests = useMemo(() => exerciseBests(sessionsAsc, bySession, ctx), [sessionsAsc, bySession, ctx]);
 
+  // exercise progression: the top working set of each session in the window
   const progression = useMemo(() => {
-    const items: { exId: string; weights: number[]; reps: number[]; total: number }[] = [];
-    for (const [exId, arr] of exerciseSessionData) {
+    const items: { exId: string; points: TrendPoint[]; byLoad: boolean; total: number }[] = [];
+    const per = new Map<string, { at: number; load: number | null; reps: number }[]>();
+    for (const se of sessionsAsc) {
+      const byEx = new Map<string, { load: number | null; reps: number }>();
+      for (const l of workingSets(bySession.get(se.id) ?? [])) {
+        const load = setLoadKg(l, ctx);
+        const cur = byEx.get(l.exerciseId);
+        const better = !cur || (load != null && (cur.load == null || load > cur.load || (load === cur.load && l.reps > cur.reps))) || (load == null && cur.load == null && l.reps > cur.reps);
+        if (better) byEx.set(l.exerciseId, { load, reps: l.reps });
+      }
+      for (const [exId, top] of byEx) {
+        const arr = per.get(exId);
+        const row = { at: se.completedAt as number, ...top };
+        if (arr) arr.push(row);
+        else per.set(exId, [row]);
+      }
+    }
+    for (const [exId, arr] of per) {
       const inWindow = arr.filter((d) => d.at >= cutoff);
-      if (inWindow.length >= 2) {
-        items.push({ exId, weights: inWindow.map((d) => d.topWeight), reps: inWindow.map((d) => d.reps), total: arr.length });
-      }
+      if (inWindow.length < 2) continue;
+      const byLoad = inWindow.every((d) => d.load != null);
+      items.push({
+        exId,
+        byLoad,
+        total: arr.length,
+        points: inWindow.map((d) => ({ at: d.at, value: byLoad ? kgToDisplay(d.load as number, unit) : d.reps })),
+      });
     }
     return items.sort((a, b) => b.total - a.total);
-  }, [exerciseSessionData, cutoff]);
+  }, [sessionsAsc, bySession, ctx, cutoff, unit]);
 
-  const prList = useMemo(() => {
-    const items: { exId: string; best: number; curve: number[]; total: number }[] = [];
-    for (const [exId, arr] of exerciseSessionData) {
-      let best = 0;
-      const curve: number[] = [];
-      for (const d of arr) {
-        best = Math.max(best, d.topWeight);
-        curve.push(best);
-      }
-      items.push({ exId, best, curve, total: arr.length });
-    }
-    return items.sort((a, b) => b.total - a.total);
-  }, [exerciseSessionData]);
+  const prList = useMemo(() => [...bests].sort((a, b) => b.sessions - a.sessions), [bests]);
 
   // consistency heatmap counts
-  const today = todayEpochDay();
   const countMap = useMemo(() => {
     const map = new Map<number, number>();
     for (const l of Object.values(state.setLogs)) {
       const ed = epochDayLocal(l.completedAt);
       map.set(ed, (map.get(ed) ?? 0) + 1);
     }
-    for (const s of sessions) {
+    for (const s of Object.values(state.sessions)) {
       if (s.completedAt == null) continue;
       if (s.notes === REST_SESSION_NOTE || s.activityType) {
         const ed = epochDayLocal(s.completedAt);
@@ -137,8 +137,9 @@ export function ProfileScreen() {
     // Only days with real logged data are filled in. Painting the scheduled rest
     // gaps between them would show activity on days nothing was recorded.
     return map;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.setLogs, state.sessions]);
+
+  const bodyFormat = (key: BodyKey) => (v: number) => (key === 'bodyFatPct' ? `${pillNumber(v)}%` : `${pillNumber(v)} ${unit}`);
 
   return (
     <div className="pad stack gap-20" style={{ paddingBottom: 32 }}>
@@ -151,16 +152,16 @@ export function ProfileScreen() {
         </div>
         <div className="stat-pill">
           <div className="big">{sessionCount}</div>
-          <div className="label-small muted" style={{ marginTop: 4 }}>Sessions</div>
+          <div className="label-small muted" style={{ marginTop: 4 }}>{sessionCount === 1 ? 'Session' : 'Sessions'}</div>
         </div>
       </div>
       <div className="stat-row">
-        <div className="stat-pill">
-          <div className="big">{streak > 0 ? `${streak}d` : '—'}</div>
-          <div className="label-small muted" style={{ marginTop: 4 }}>Streak</div>
+        <div className="stat-pill" title={`Weeks in a row with at least ${plural(streak.target, 'training day')}.`}>
+          <div className="big">{streak.current > 0 ? <>{streak.current}<span className="unit">wk</span></> : '—'}</div>
+          <div className="label-small muted" style={{ marginTop: 4 }}>{streak.lost ? 'Streak lost' : 'Week streak'}</div>
         </div>
         <div className="stat-pill">
-          <div className="big">{longestStreak > 0 ? `${longestStreak}d` : '—'}</div>
+          <div className="big">{streak.longest > 0 ? <>{streak.longest}<span className="unit">wk</span></> : '—'}</div>
           <div className="label-small muted" style={{ marginTop: 4 }}>Longest streak</div>
         </div>
       </div>
@@ -180,7 +181,7 @@ export function ProfileScreen() {
       {/* Body card */}
       <div className="card">
         <div className="row-between wrap gap-8 mb-12">
-          <button className="row gap-8" style={{ background: 'none', border: 'none', color: 'var(--fg)' }} onClick={() => setBodyExpanded((e) => !e)}>
+          <button className="row gap-8" style={{ background: 'none', border: 'none', color: 'var(--fg)' }} onClick={() => setBodyExpanded((e) => !e)} aria-expanded={bodyExpanded}>
             <span className="headline-small">BODY</span>
             {bodyExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
           </button>
@@ -223,31 +224,35 @@ export function ProfileScreen() {
         )}
       </div>
 
-      {/* metric sparklines */}
+      {/* body metric trends */}
       {(['bodyweightKg', 'bodyFatPct', 'muscleMassKg'] as const).map((key) => {
-        const series = windowSeries(key);
-        if (series.length < 1) return null;
+        const raw = windowSeries(key);
+        if (raw.length < 1) return null;
+        const series = key === 'bodyFatPct' ? raw : raw.map((p) => ({ at: p.at, value: kgToDisplay(p.value, unit) }));
         const label = key === 'bodyweightKg' ? 'Weight' : key === 'bodyFatPct' ? 'Body fat' : 'Muscle';
-        const curr = series[series.length - 1];
-        const deltaPct = series.length >= 2 && series[0] !== 0 ? ((series[series.length - 1] - series[0]) / series[0]) * 100 : null;
-        const display = key === 'bodyFatPct' ? `${curr}%` : `${formatWeight(curr, unit)} ${unit}`;
-        const goal = key === 'bodyweightKg' ? goalKg : null;
+        const curr = series[series.length - 1].value;
+        // Body fat moves in percentage points; weight and muscle in the user's unit.
+        const change = series.length >= 2 ? signed(curr - series[0].value, key === 'bodyFatPct' ? 'pts' : unit) : null;
+        const goal = key === 'bodyweightKg' && goalKg != null ? kgToDisplay(goalKg, unit) : null;
         const toGoal = goal != null ? Math.abs(curr - goal) : null;
+        const fmt = bodyFormat(key);
         return (
           <div key={key} className="card">
-            <div className="row-between gap-8 mb-8">
+            <div className="row-between wrap mb-8" style={{ gap: '2px 8px' }}>
               <span className="title-small">{label}</span>
-              <span className="body-small muted nowrap">{display}{deltaPct != null ? ` · ${deltaPct >= 0 ? '+' : ''}${deltaPct.toFixed(1)}%` : ''}</span>
+              <span className="body-small muted nowrap">{fmt(curr)}{change ? ` · ${change} in ${rangeDef.key === 'All' ? 'total' : rangeDef.label}` : ''}</span>
             </div>
-            <Sparkline
-              values={key === 'bodyFatPct' ? series : series.map((v) => kgToDisplay(v, unit))}
-              goal={goal != null ? kgToDisplay(goal, unit) : null}
-              width={320}
-              height={44}
+            <TrendChart
+              points={series}
+              format={fmt}
+              goal={goal}
+              average={key === 'bodyweightKg' && series.length >= 5}
+              seriesLabel="Weigh-ins"
+              label={`${label} over time`}
             />
             {goal != null && toGoal != null && (
               <div className="body-small muted mt-8">
-                {toGoal < 0.05 ? 'At your goal weight.' : `${formatWeight(toGoal, unit)} ${unit} to your ${formatWeight(goal, unit)} ${unit} goal (dashed line).`}
+                {toGoal < 0.05 ? 'At your goal weight.' : `${pillNumber(toGoal)} ${unit} to your ${pillNumber(goal)} ${unit} goal (dashed line).`}
               </div>
             )}
           </div>
@@ -269,21 +274,21 @@ export function ProfileScreen() {
           <div className="stack gap-12">
             {progression.map((item) => {
               const ex = state.exercises[item.exId];
-              const first = item.weights[0];
-              const last = item.weights[item.weights.length - 1];
-              const delta = first !== 0 ? ((last - first) / first) * 100 : 0;
+              const first = item.points[0].value;
+              const last = item.points[item.points.length - 1].value;
+              const timed = ex?.timed;
+              const fmt = (v: number) => (item.byLoad ? `${pillNumber(v)} ${unit}` : timed ? formatSeconds(v) : plural(Math.round(v), 'rep'));
+              const delta = item.byLoad ? signed(last - first, unit) : timed ? signed(last - first, 's') : signed(last - first, 'reps');
               return (
                 <div key={item.exId} className="card">
-                  <div className="row-between gap-8 mb-8">
+                  <div className="row-between wrap mb-8" style={{ gap: '2px 8px' }}>
                     <span className="title-small min0">{ex?.name ?? 'Exercise'}</span>
-                    <span className="body-small muted nowrap">{formatWeight(last, unit)} {unit} · {delta >= 0 ? '+' : ''}{delta.toFixed(0)}%</span>
+                    <span className="body-small muted nowrap">{fmt(last)} · {delta}</span>
                   </div>
-                  <DualSparkline
-                    primary={item.weights.map((w) => kgToDisplay(w, unit))}
-                    secondary={item.reps}
-                    width={320}
-                    height={48}
-                  />
+                  <TrendChart points={item.points} format={fmt} height={120} label={`${ex?.name ?? 'Exercise'}: top set per session`} />
+                  <div className="body-small muted mt-8" style={{ fontSize: 11 }}>
+                    {item.byLoad ? (ex && (ex.equipment === 'Bodyweight' || ex.equipment === 'Weighted' || ex.equipment === 'Assisted') ? 'Top set load per session, bodyweight included.' : 'Top set weight per session.') : timed ? 'Longest hold per session.' : 'Most reps per session.'}
+                  </div>
                 </div>
               );
             })}
@@ -291,39 +296,83 @@ export function ProfileScreen() {
         </div>
       )}
 
-      {/* PRs */}
+      {/* PRs — tapping one opens its record line in place */}
       {prList.length > 0 && (
         <div>
           <div className="headline-small mb-12">PERSONAL RECORDS</div>
-          {prExercise && (() => {
-            const item = prList.find((p) => p.exId === prExercise);
-            if (!item) return null;
-            return (
-              <div className="card mb-12">
-                <div className="row-between gap-8 mb-8">
-                  <span className="title-small min0">{state.exercises[item.exId]?.name}</span>
-                  <span className="body-small accent nowrap">{formatWeight(item.best, unit)} {unit}</span>
-                </div>
-                <Sparkline values={item.curve.map((w) => kgToDisplay(w, unit))} width={320} height={44} />
-              </div>
-            );
-          })()}
           <div className="stack gap-8">
             {prList.map((item) => (
-              <button key={item.exId} className="card row-between gap-12" style={{ color: 'var(--fg)', textAlign: 'left' }} onClick={() => setPrExercise((p) => (p === item.exId ? null : item.exId))}>
-                <span className="title-small min0">{state.exercises[item.exId]?.name ?? 'Exercise'}</span>
-                <span className="title-small accent nowrap">{formatWeight(item.best, unit)} {unit}</span>
-              </button>
+              <RecordRow
+                key={item.exerciseId}
+                item={item}
+                ex={state.exercises[item.exerciseId]}
+                unit={unit}
+                show1RM={show1RM}
+                open={prExercise === item.exerciseId}
+                onToggle={() => setPrExercise((p) => (p === item.exerciseId ? null : item.exerciseId))}
+              />
             ))}
           </div>
         </div>
       )}
 
-      {sessionCount > 0 && <OneRmSection />}
+      {sessionCount > 0 && show1RM && <OneRmSection />}
 
       {editing && <EditProfileSheet onClose={() => setEditing(false)} onSave={setProfile} />}
       {loggingBody && <LogBodySheet unit={unit} onClose={() => setLoggingBody(false)} onSave={logBodyMetric} />}
       {goalOpen && <GoalSheet unit={unit} goalKg={goalKg} onClose={() => setGoalOpen(false)} onSave={(g) => setPrefs({ goalWeightKg: g })} />}
+    </div>
+  );
+}
+
+function RecordRow({
+  item,
+  ex,
+  unit,
+  show1RM,
+  open,
+  onToggle,
+}: {
+  item: ExerciseBests;
+  ex: Exercise | undefined;
+  unit: Units;
+  show1RM: boolean;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const byLoad = item.kind !== 'time' && item.kind !== 'band' && item.heaviest != null;
+  const headline = item.kind === 'time'
+    ? item.mostReps ? `${formatSeconds(item.mostReps.reps)} hold` : '—'
+    : byLoad && item.heaviest
+    ? `${formatWeight(item.heaviest.loadKg, unit)} ${unit}`
+    : item.mostReps
+    ? formatSet(item.mostReps, ex, unit)
+    : '—';
+  const fmt = (v: number) => (byLoad ? `${pillNumber(v)} ${unit}` : item.kind === 'time' ? formatSeconds(v) : plural(Math.round(v), 'rep'));
+  const curve = item.curve.map((c) => ({ at: c.at, value: byLoad ? kgToDisplay(c.value, unit) : c.value }));
+  return (
+    <div className="card stack">
+      {/* The whole card row is the target, not just the text line. */}
+      <button className="row-between gap-12" style={{ width: 'calc(100% + 32px)', margin: open ? '-16px -16px -8px' : '-16px', padding: open ? '16px 16px 8px' : 16, background: 'none', border: 'none', color: 'var(--fg)', textAlign: 'left' }} onClick={onToggle} aria-expanded={open}>
+        <span className="title-small min0">{ex?.name ?? 'Exercise'}</span>
+        <span className="title-small accent nowrap">{headline}</span>
+      </button>
+      {open && (
+        <div className="stack gap-6 mt-8" style={{ width: '100%' }}>
+          {item.heaviest && item.kind !== 'time' && (
+            <span className="body-small muted">
+              Heaviest: {formatSet(item.heaviest.log, ex, unit)}{item.kind === 'bodyweight' ? ` (${formatWeight(item.heaviest.loadKg, unit)} ${unit} with bodyweight)` : ''} · {formatDateShort(item.heaviest.log.completedAt)}
+            </span>
+          )}
+          {item.mostReps && item.kind !== 'time' && (
+            <span className="body-small muted">Most reps: {formatSet(item.mostReps, ex, unit)} · {formatDateShort(item.mostReps.completedAt)}</span>
+          )}
+          {show1RM && item.e1rm && (
+            <span className="body-small muted">Estimated 1RM: {formatWeight(item.e1rm.est, unit)} {unit}</span>
+          )}
+          {curve.length > 1 && <TrendChart points={curve} format={fmt} height={110} label={`${ex?.name ?? 'Exercise'} record over time`} />}
+        </div>
+      )}
     </div>
   );
 }
@@ -337,7 +386,7 @@ function ProfileHeader({ onEdit }: { onEdit: () => void }) {
       <Avatar name={name} color={state.prefs.color} photo={state.prefs.avatarPhoto} size={64} />
       <div className="stack grow min0">
         <span className="headline-medium">{name}</span>
-        <span className="body-small muted">{sessionCount} sessions logged</span>
+        <span className="body-small muted">{plural(sessionCount, 'session')} logged</span>
       </div>
       <button className="chip" onClick={onEdit}>Edit</button>
     </div>
@@ -367,97 +416,6 @@ function BodyStat({
       </div>
       <div className="label-small muted" style={{ marginTop: 4 }}>{label}</div>
     </div>
-  );
-}
-
-const BW_KG_MIN = 20;
-const BW_KG_MAX = 400;
-const FAT_MIN = 2;
-const FAT_MAX = 70;
-const MUSCLE_KG_MIN = 10;
-const MUSCLE_KG_MAX = 150;
-
-function LogBodySheet({ unit, onClose, onSave }: { unit: 'kg' | 'lbs'; onClose: () => void; onSave: (m: { bodyweightKg?: number | null; bodyFatPct?: number | null; muscleMassKg?: number | null }) => void }) {
-  const [w, setW] = useState('');
-  const [f, setF] = useState('');
-  const [m, setM] = useState('');
-  const kg = (v: string) => (v ? (unit === 'lbs' ? Number(v) * 0.45359237 : Number(v)) : null);
-
-  const weightRangeLabel = (minKg: number, maxKg: number) =>
-    `Enter ${Math.round(kgToDisplay(minKg, unit))}–${Math.round(kgToDisplay(maxKg, unit))} ${unit}`;
-
-  const wErr = (() => {
-    if (!w) return null;
-    const kgVal = kg(w);
-    if (kgVal === null || !Number.isFinite(kgVal)) return weightRangeLabel(BW_KG_MIN, BW_KG_MAX);
-    if (kgVal < BW_KG_MIN || kgVal > BW_KG_MAX) return weightRangeLabel(BW_KG_MIN, BW_KG_MAX);
-    return null;
-  })();
-
-  const fErr = (() => {
-    if (!f) return null;
-    const fVal = Number(f);
-    if (!Number.isFinite(fVal) || fVal < FAT_MIN || fVal > FAT_MAX) return `Enter ${FAT_MIN}–${FAT_MAX} %`;
-    return null;
-  })();
-
-  const mErr = (() => {
-    if (!m) return null;
-    const kgVal = kg(m);
-    if (kgVal === null || !Number.isFinite(kgVal)) return weightRangeLabel(MUSCLE_KG_MIN, MUSCLE_KG_MAX);
-    if (kgVal < MUSCLE_KG_MIN || kgVal > MUSCLE_KG_MAX) return weightRangeLabel(MUSCLE_KG_MIN, MUSCLE_KG_MAX);
-    return null;
-  })();
-
-  return (
-    <Sheet onClose={onClose}>
-      <div className="headline-small mb-16">Log body metrics</div>
-      <div className="stack gap-12">
-        <div>
-          <input className="field" inputMode="decimal" placeholder={`Bodyweight (${unit})`} value={w} onChange={(e) => setW(e.target.value.replace(/[^\d.]/g, ''))} />
-          {wErr && <div className="body-small" style={{ color: 'var(--coral)' }}>{wErr}</div>}
-        </div>
-        <div>
-          <input className="field" inputMode="decimal" placeholder="Body fat %" value={f} onChange={(e) => setF(e.target.value.replace(/[^\d.]/g, ''))} />
-          {fErr && <div className="body-small" style={{ color: 'var(--coral)' }}>{fErr}</div>}
-        </div>
-        <div>
-          <input className="field" inputMode="decimal" placeholder={`Muscle mass (${unit})`} value={m} onChange={(e) => setM(e.target.value.replace(/[^\d.]/g, ''))} />
-          {mErr && <div className="body-small" style={{ color: 'var(--coral)' }}>{mErr}</div>}
-        </div>
-      </div>
-      <div className="mt-20">
-        <BigCta
-          disabled={(!w && !f && !m) || !!wErr || !!fErr || !!mErr}
-          onClick={() => {
-            onSave({ bodyweightKg: kg(w), bodyFatPct: f ? Number(f) : null, muscleMassKg: kg(m) });
-            onClose();
-          }}
-        >
-          Save
-        </BigCta>
-      </div>
-    </Sheet>
-  );
-}
-
-function GoalSheet({ unit, goalKg, onClose, onSave }: { unit: 'kg' | 'lbs'; goalKg: number | null; onClose: () => void; onSave: (kg: number | null) => void }) {
-  const [v, setV] = useState(goalKg != null ? formatWeight(goalKg, unit) : '');
-  const kg = v ? displayToKg(Number(v), unit) : null;
-  const err = kg != null && (!Number.isFinite(kg) || kg < BW_KG_MIN || kg > BW_KG_MAX)
-    ? `Enter ${Math.round(kgToDisplay(BW_KG_MIN, unit))}–${Math.round(kgToDisplay(BW_KG_MAX, unit))} ${unit}`
-    : null;
-  return (
-    <Sheet onClose={onClose}>
-      <div className="headline-small mb-8">Goal weight</div>
-      <p className="body-small muted" style={{ margin: '0 0 16px' }}>Drawn as a dashed line on your weight chart; the trend arrow turns green when you move toward it.</p>
-      <input className="field" inputMode="decimal" placeholder={`Goal (${unit})`} value={v} onChange={(e) => setV(e.target.value.replace(/[^\d.]/g, ''))} autoFocus />
-      {err && <div className="body-small" style={{ color: 'var(--coral)' }}>{err}</div>}
-      <div className="stack gap-8 mt-20">
-        <BigCta disabled={kg == null || !!err} onClick={() => { onSave(kg); onClose(); }}>Save goal</BigCta>
-        {goalKg != null && <GhostCta onClick={() => { onSave(null); onClose(); }}>Clear goal</GhostCta>}
-      </div>
-    </Sheet>
   );
 }
 

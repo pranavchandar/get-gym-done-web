@@ -1,11 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
-type Listener = (msg: string) => void;
+type Listener = (msg: string | null) => void;
 const listeners = new Set<Listener>();
 
 export function toast(message: string): void {
   for (const l of listeners) l(message);
+}
+
+/** Drop any toast on screen — when the view changes without a route change (tabs). */
+export function clearToasts(): void {
+  for (const l of listeners) l(null);
 }
 
 interface ActiveToast {
@@ -20,6 +25,10 @@ export function Toaster() {
 
   useEffect(() => {
     const listener: Listener = (message) => {
+      if (message == null) {
+        setItems([]);
+        return;
+      }
       const id = ++counter.current;
       setItems([{ id, message }]);
       window.setTimeout(() => {

@@ -12,6 +12,7 @@ import type {
   ActiveSessionState,
   Units,
   ThemeChoice,
+  SetTag,
 } from '../types';
 import { REST_SESSION_NOTE, DEFAULT_REST_SECONDS, REST_MIN, REST_MAX } from '../types';
 import { buildSeedCatalog, SEED_VERSION } from './seed';
@@ -19,6 +20,12 @@ import { DEFAULT_ACCENT } from '../theme/palettes';
 import { epochDayLocal } from '../domain/dates';
 
 export const STORAGE_KEY = 'get-gym-done:v1';
+
+/**
+ * A workout finished this long after its last set was left open, not trained until now:
+ * it is dated at its last set. An empty workout this old is a fresh start when reopened.
+ */
+const LATE_FINISH_MS = 3 * 60 * 60 * 1000;
 
 export function uid(): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
@@ -38,7 +45,25 @@ const defaultPrefs: UserPrefs = {
   goalWeightKg: null,
   bodyFigure: 'male',
   keepAwake: true,
+  show1RM: true,
+  textSize: 'default',
+  logEffort: false,
+  weeklyTarget: null,
+  trainingWeekdays: null,
 };
+
+/** Web-only prefs: the Android backup has no slot for them, so they travel separately. */
+export const WEB_PREF_KEYS = [
+  'goalWeightKg',
+  'bodyFigure',
+  'keepAwake',
+  'show1RM',
+  'textSize',
+  'logEffort',
+  'weeklyTarget',
+  'trainingWeekdays',
+] as const;
+export type WebPrefKey = (typeof WEB_PREF_KEYS)[number];
 
 export interface DraftDay {
   name: string;
@@ -62,6 +87,14 @@ export interface StoreData {
   prefs: UserPrefs;
   activeSession: ActiveSessionState | null;
   confettiArmed: boolean;
+  /** exerciseId -> local epoch-day a "Time to add weight" card was dismissed for. */
+  bumpSnooze: Record<string, number>;
+}
+
+export interface SetExtras {
+  tag?: SetTag | null;
+  band?: number | null;
+  rir?: number | null;
 }
 
 export interface StoreActions {
@@ -72,12 +105,13 @@ export interface StoreActions {
   setRestSeconds: (seconds: number) => void;
   setAccent: (a: string) => void;
   setProfile: (p: { handle?: string | null; color?: string | null; avatarPhoto?: string | null }) => void;
-  setPrefs: (p: Pick<Partial<UserPrefs>, 'goalWeightKg' | 'bodyFigure' | 'keepAwake'>) => void;
+  setPrefs: (p: Pick<Partial<UserPrefs>, WebPrefKey>) => void;
   // splits / onboarding
   activatePresetSplit: (splitId: string) => void;
   activateExistingSplit: (splitId: string) => void;
   commitCustomSplit: (draft: RoutineDraft) => string;
   // exercises
+  updateExercise: (id: string, patch: Partial<Pick<Exercise, 'notes' | 'restSeconds' | 'timed'>>) => void;
   createCustomExercise: (fields: Partial<Exercise> & { name: string; primaryMuscle: string }) => string;
   /** Copy a library exercise into the catalog (idempotent) and return its id. */
   addLibraryExercise: (ex: Exercise) => string;
@@ -86,6 +120,10 @@ export interface StoreActions {
   moveDay: (splitId: string, dayNumber: number, dir: -1 | 1) => void;
   addDay: (splitId: string, name: string) => void;
   removeDay: (dayId: string) => boolean;
+  /** Copy a day (its exercises and targets) to the end of its split. */
+  duplicateDay: (dayId: string) => void;
+  /** Swap an exercise for another in a routine day, keeping its sets and reps. */
+  replaceInRoutine: (dayId: string, oldExerciseId: string, newExerciseId: string) => void;
   saveDayExercises: (
     dayId: string,
     name: string,
@@ -93,9 +131,13 @@ export interface StoreActions {
   ) => void;
   // workout session
   startOrResumeSession: (workoutDayId: string) => string;
-  logSet: (exerciseId: string, setNumber: number, weightKg: number, reps: number) => void;
-  removeSet: (setLogId: string) => void;
-  undoLastSet: (exerciseId: string) => void;
+  logSet: (exerciseId: string, setNumber: number, weightKg: number, reps: number, extras?: SetExtras) => void;
+  /** Add (+1) or drop (−1) a set of an exercise in the workout in progress. */
+  adjustSetCount: (exerciseId: string, delta: number) => void;
+  /** Remove set row `setNumber` of an exercise in the workout in progress; later sets move up. */
+  removeSetRow: (exerciseId: string, setNumber: number) => void;
+  /** Remove the most recently logged set of an exercise; returns it so its values can be restored. */
+  undoLastSet: (exerciseId: string) => SetLog | null;
   addExerciseToWorkout: (exerciseId: string) => void;
   replaceExercise: (oldExerciseId: string, newExerciseId: string) => void;
   removeExerciseFromWorkout: (exerciseId: string) => void;
@@ -103,7 +145,18 @@ export interface StoreActions {
   startRestTimer: (seconds: number) => void;
   adjustRestTimer: (delta: number) => void;
   clearRestTimer: () => void;
-  finishWorkout: () => string | null;
+  finishWorkout: (notes?: string | null) => string | null;
+  /** Throw away the workout in progress and every set logged in it. */
+  discardWorkout: () => void;
+  // history editing
+  updateSetLog: (id: string, patch: Partial<Pick<SetLog, 'weightKg' | 'reps' | 'tag' | 'band' | 'rir'>>) => void;
+  /** Delete a logged set; the exercise's later sets in that session move up. */
+  deleteSetLog: (id: string) => void;
+  addSetToSession: (sessionId: string, exerciseId: string, weightKg: number, reps: number) => void;
+  updateSession: (id: string, patch: Partial<Pick<Session, 'notes' | 'activityType' | 'durationMin' | 'distanceKm'>>) => void;
+  /** Delete a session and its sets (ends it if it is the workout in progress). */
+  deleteSession: (id: string) => void;
+  snoozeBump: (exerciseId: string) => void;
   // body & activity
   logBodyMetric: (m: { bodyweightKg?: number | null; bodyFatPct?: number | null; muscleMassKg?: number | null }) => void;
   logActivity: (a: {
@@ -111,8 +164,8 @@ export interface StoreActions {
     durationMin: number | null;
     notes: string | null;
     workoutDayId: string | null;
+    distanceKm?: number | null;
   }) => void;
-  autoLogRestDay: (restDayId: string) => void;
   // confetti
   armConfetti: () => void;
   consumeConfetti: () => void;
@@ -137,6 +190,7 @@ function initialData(): StoreData {
     prefs: { ...defaultPrefs },
     activeSession: null,
     confettiArmed: false,
+    bumpSnooze: {},
   };
 }
 
@@ -154,6 +208,14 @@ function dayExercisesOf(s: StoreData, dayId: string): DayExercise[] {
 }
 function setLogsOfSession(s: StoreData, sessionId: string): SetLog[] {
   return Object.values(s.setLogs).filter((l) => l.sessionId === sessionId);
+}
+/** Close the gap left by deleting set `removed` of an exercise in a session. */
+function renumberAfter(logs: Record<string, SetLog>, sessionId: string, exerciseId: string, removed: number): void {
+  for (const l of Object.values(logs)) {
+    if (l.sessionId === sessionId && l.exerciseId === exerciseId && l.setNumber > removed) {
+      logs[l.id] = { ...l, setNumber: l.setNumber - 1 };
+    }
+  }
 }
 function recomputeDayCount(s: StoreData, splitId: string): number {
   return daysOfSplit(s, splitId).length;
@@ -273,6 +335,9 @@ export const useStore = create<Store>()(
         return id;
       },
 
+      updateExercise: (id, patch) =>
+        set((s) => (s.exercises[id] ? { exercises: { ...s.exercises, [id]: { ...s.exercises[id], ...patch } } } : {})),
+
       addLibraryExercise: (ex) => {
         if (!get().exercises[ex.id]) set((s) => ({ exercises: { ...s.exercises, [ex.id]: ex } }));
         return ex.id;
@@ -350,6 +415,39 @@ export const useStore = create<Store>()(
         return true;
       },
 
+      duplicateDay: (dayId) =>
+        set((s) => {
+          const day = s.workoutDays[dayId];
+          if (!day) return {};
+          const days = daysOfSplit(s, day.splitId);
+          const newId = uid();
+          const copy: WorkoutDay = {
+            ...day,
+            id: newId,
+            dayNumber: Math.max(...days.map((d) => d.dayNumber)) + 1,
+            name: `${day.name} (copy)`,
+          };
+          const dayExercises = { ...s.dayExercises };
+          for (const de of dayExercisesOf(s, dayId)) {
+            const id = uid();
+            dayExercises[id] = { ...de, id, workoutDayId: newId };
+          }
+          const split = s.splits[day.splitId];
+          return {
+            workoutDays: { ...s.workoutDays, [newId]: copy },
+            dayExercises,
+            splits: split ? { ...s.splits, [split.id]: { ...split, dayCount: days.length + 1 } } : s.splits,
+          };
+        }),
+
+      replaceInRoutine: (dayId, oldExerciseId, newExerciseId) =>
+        set((s) => {
+          const rows = dayExercisesOf(s, dayId);
+          const row = rows.find((d) => d.exerciseId === oldExerciseId);
+          if (!row || rows.some((d) => d.exerciseId === newExerciseId)) return {};
+          return { dayExercises: { ...s.dayExercises, [row.id]: { ...row, exerciseId: newExerciseId } } };
+        }),
+
       saveDayExercises: (dayId, name, rows) =>
         set((s) => {
           const day = s.workoutDays[dayId];
@@ -375,22 +473,37 @@ export const useStore = create<Store>()(
 
       startOrResumeSession: (workoutDayId) => {
         const s = get();
+        const now = Date.now();
+        const sessions = { ...s.sessions };
+        const isStaleEmpty = (id: string) =>
+          !setLogsOfSession(s, id).length && now - (sessions[id]?.startedAt ?? now) > LATE_FINISH_MS;
         if (s.activeSession && s.activeSession.workoutDayId === workoutDayId) {
+          const cur = sessions[s.activeSession.sessionId];
+          if (cur && isStaleEmpty(cur.id)) set({ sessions: { ...sessions, [cur.id]: { ...cur, startedAt: now } } });
           return s.activeSession.sessionId;
         }
-        let session = Object.values(s.sessions).find(
+        // Switching away from a workout nothing was logged in: drop it rather than leave
+        // an open session behind that a later visit to that day would quietly resume.
+        if (s.activeSession) {
+          const prevId = s.activeSession.sessionId;
+          if (!setLogsOfSession(s, prevId).length && sessions[prevId]?.completedAt == null) delete sessions[prevId];
+        }
+        let session = Object.values(sessions).find(
           (se) => se.workoutDayId === workoutDayId && se.completedAt == null,
         );
-        const sessions = { ...s.sessions };
         let sessionId: string;
         if (session) {
           sessionId = session.id;
+          if (isStaleEmpty(sessionId)) {
+            session = { ...session, startedAt: now };
+            sessions[sessionId] = session;
+          }
         } else {
           sessionId = uid();
           session = {
             id: sessionId,
             workoutDayId,
-            startedAt: Date.now(),
+            startedAt: now,
             completedAt: null,
             notes: null,
           };
@@ -436,7 +549,7 @@ export const useStore = create<Store>()(
         return sessionId;
       },
 
-      logSet: (exerciseId, setNumber, weightKg, reps) => {
+      logSet: (exerciseId, setNumber, weightKg, reps, extras) => {
         const s = get();
         if (!s.activeSession) return;
         const id = uid();
@@ -448,29 +561,48 @@ export const useStore = create<Store>()(
           weightKg,
           reps,
           completedAt: Date.now(),
-          rir: null,
+          rir: extras?.rir ?? null,
         };
+        if (extras?.tag) log.tag = extras.tag;
+        if (extras?.band != null) log.band = extras.band;
         set({ setLogs: { ...s.setLogs, [id]: log } });
       },
 
-      removeSet: (setLogId) =>
+      adjustSetCount: (exerciseId, delta) =>
         set((s) => {
-          const logs = { ...s.setLogs };
-          delete logs[setLogId];
-          return { setLogs: logs };
+          if (!s.activeSession) return {};
+          const adj = { ...(s.activeSession.setAdjust ?? {}) };
+          adj[exerciseId] = (adj[exerciseId] ?? 0) + delta;
+          return { activeSession: { ...s.activeSession, setAdjust: adj } };
+        }),
+
+      removeSetRow: (exerciseId, setNumber) =>
+        set((s) => {
+          if (!s.activeSession) return {};
+          const sessionId = s.activeSession.sessionId;
+          const setLogs = { ...s.setLogs };
+          const hit = Object.values(s.setLogs).find(
+            (l) => l.sessionId === sessionId && l.exerciseId === exerciseId && l.setNumber === setNumber,
+          );
+          if (hit) delete setLogs[hit.id];
+          renumberAfter(setLogs, sessionId, exerciseId, setNumber);
+          const adj = { ...(s.activeSession.setAdjust ?? {}) };
+          adj[exerciseId] = (adj[exerciseId] ?? 0) - 1;
+          return { setLogs, activeSession: { ...s.activeSession, setAdjust: adj } };
         }),
 
       undoLastSet: (exerciseId) => {
         const s = get();
-        if (!s.activeSession) return;
+        if (!s.activeSession) return null;
         const logs = setLogsOfSession(s, s.activeSession.sessionId)
           .filter((l) => l.exerciseId === exerciseId)
           .sort((a, b) => a.completedAt - b.completedAt);
-        if (!logs.length) return;
+        if (!logs.length) return null;
         const last = logs[logs.length - 1];
         const next = { ...s.setLogs };
         delete next[last.id];
         set({ setLogs: next });
+        return last;
       },
 
       addExerciseToWorkout: (exerciseId) =>
@@ -580,7 +712,7 @@ export const useStore = create<Store>()(
           s.activeSession ? { activeSession: { ...s.activeSession, restEndAt: null, restDuration: null } } : {},
         ),
 
-      finishWorkout: () => {
+      finishWorkout: (notes) => {
         const s = get();
         if (!s.activeSession) return null;
         const sessionId = s.activeSession.sessionId;
@@ -589,12 +721,27 @@ export const useStore = create<Store>()(
           set({ activeSession: null });
           return null;
         }
+        const now = Date.now();
+        const lastSetAt = Math.max(0, ...setLogsOfSession(s, sessionId).map((l) => l.completedAt));
+        // Left open and finished later (a phone call, a night shift): date it by when it was done.
+        const completedAt = lastSetAt > 0 && now - lastSetAt > LATE_FINISH_MS ? lastSetAt : now;
         set({
-          sessions: { ...s.sessions, [sessionId]: { ...session, completedAt: Date.now() } },
+          sessions: { ...s.sessions, [sessionId]: { ...session, completedAt, notes: cleanNote(notes) ?? session.notes } },
           activeSession: null,
         });
         return sessionId;
       },
+
+      discardWorkout: () =>
+        set((s) => {
+          if (!s.activeSession) return {};
+          const id = s.activeSession.sessionId;
+          const sessions = { ...s.sessions };
+          delete sessions[id];
+          const setLogs = { ...s.setLogs };
+          for (const l of Object.values(s.setLogs)) if (l.sessionId === id) delete setLogs[l.id];
+          return { sessions, setLogs, activeSession: null };
+        }),
 
       logBodyMetric: (m) => {
         const bw = m.bodyweightKg ?? null;
@@ -635,25 +782,71 @@ export const useStore = create<Store>()(
           workoutDayId: a.workoutDayId,
           startedAt: now,
           completedAt: now,
-          notes: a.notes,
+          notes: cleanNote(a.notes),
           activityType: a.activityType,
           durationMin: a.durationMin,
         };
+        if (a.distanceKm != null) session.distanceKm = a.distanceKm;
         set((s) => ({ sessions: { ...s.sessions, [id]: session } }));
       },
 
-      autoLogRestDay: (restDayId) => {
-        const id = uid();
-        const now = Date.now();
-        const session: Session = {
-          id,
-          workoutDayId: restDayId,
-          startedAt: now,
-          completedAt: now,
-          notes: REST_SESSION_NOTE,
-        };
-        set((s) => ({ sessions: { ...s.sessions, [id]: session } }));
-      },
+      updateSetLog: (id, patch) =>
+        set((s) => (s.setLogs[id] ? { setLogs: { ...s.setLogs, [id]: { ...s.setLogs[id], ...patch } } } : {})),
+
+      deleteSetLog: (id) =>
+        set((s) => {
+          const log = s.setLogs[id];
+          if (!log) return {};
+          const setLogs = { ...s.setLogs };
+          delete setLogs[id];
+          renumberAfter(setLogs, log.sessionId, log.exerciseId, log.setNumber);
+          return { setLogs };
+        }),
+
+      addSetToSession: (sessionId, exerciseId, weightKg, reps) =>
+        set((s) => {
+          const session = s.sessions[sessionId];
+          if (!session) return {};
+          const prior = setLogsOfSession(s, sessionId);
+          const mine = prior.filter((l) => l.exerciseId === exerciseId);
+          const id = uid();
+          const last = Math.max(session.startedAt, ...prior.map((l) => l.completedAt));
+          const log: SetLog = {
+            id,
+            sessionId,
+            exerciseId,
+            setNumber: mine.length ? Math.max(...mine.map((l) => l.setNumber)) + 1 : 1,
+            weightKg,
+            reps,
+            // Inside the session's own time span, so it stays on the session's day.
+            completedAt: session.completedAt != null ? Math.min(last + 1000, session.completedAt) : Date.now(),
+            rir: null,
+          };
+          return { setLogs: { ...s.setLogs, [id]: log } };
+        }),
+
+      updateSession: (id, patch) =>
+        set((s) => {
+          const se = s.sessions[id];
+          if (!se) return {};
+          const next = { ...se, ...patch };
+          if ('notes' in patch) next.notes = cleanNote(patch.notes);
+          return { sessions: { ...s.sessions, [id]: next } };
+        }),
+
+      deleteSession: (id) =>
+        set((s) => {
+          if (!s.sessions[id]) return {};
+          const sessions = { ...s.sessions };
+          delete sessions[id];
+          const setLogs = { ...s.setLogs };
+          for (const l of Object.values(s.setLogs)) if (l.sessionId === id) delete setLogs[l.id];
+          const activeSession = s.activeSession?.sessionId === id ? null : s.activeSession;
+          return { sessions, setLogs, activeSession };
+        }),
+
+      snoozeBump: (exerciseId) =>
+        set((s) => ({ bumpSnooze: { ...s.bumpSnooze, [exerciseId]: epochDayLocal(Date.now()) } })),
 
       armConfetti: () => set({ confettiArmed: true }),
       consumeConfetti: () => set({ confettiArmed: false }),
@@ -699,10 +892,21 @@ export const useStore = create<Store>()(
         prefs: state.prefs,
         activeSession: state.activeSession,
         confettiArmed: state.confettiArmed,
+        bumpSnooze: state.bumpSnooze,
       }),
     },
   ),
 );
+
+/**
+ * A user note as stored. Empty → null; the literal "rest" is reserved as the marker of a
+ * logged rest day, so a note that says just that gets a full stop.
+ */
+function cleanNote(raw: string | null | undefined): string | null {
+  const t = (raw ?? '').trim();
+  if (!t) return null;
+  return t === REST_SESSION_NOTE ? `${t}.` : t;
+}
 
 // Non-hook accessors (for backup/sync modules).
 export function getState(): Store {

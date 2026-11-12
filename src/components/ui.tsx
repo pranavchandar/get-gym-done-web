@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ChevronLeft } from './icons';
 
 export function BigCta({
@@ -105,6 +105,7 @@ export function Stepper({
   format,
   onValueTap,
   mini,
+  label,
 }: {
   value: number;
   onChange: (v: number) => void;
@@ -112,19 +113,49 @@ export function Stepper({
   min?: number;
   max?: number;
   format?: (v: number) => string;
+  /** Tapping the value opens a custom editor (a keypad); without it, the value is typed in place. */
   onValueTap?: () => void;
   mini?: boolean;
+  /** Accessible name of the value, e.g. "sets". */
+  label?: string;
 }) {
   const clamp = (v: number) => Math.max(min, Math.min(max, v));
+  const [editing, setEditing] = useState<string | null>(null);
+  const commit = () => {
+    if (editing == null) return;
+    const v = parseFloat(editing.replace(',', '.'));
+    // Whole-number steppers (sets, reps, days) take whole numbers; weights keep decimals.
+    if (Number.isFinite(v)) onChange(clamp(step === 1 ? Math.round(v) : v));
+    setEditing(null);
+  };
   return (
     <div className={`stepper ${mini ? 'mini' : ''}`}>
       <button type="button" aria-label="decrease" onClick={() => onChange(clamp(value - step))}>−</button>
-      {onValueTap ? (
-        <button type="button" className="value" onClick={onValueTap}>
+      {editing != null ? (
+        <input
+          className="value"
+          inputMode={step === 1 && min >= 0 ? 'numeric' : 'decimal'}
+          aria-label={label ?? 'value'}
+          value={editing}
+          autoFocus
+          onFocus={(e) => e.target.select()}
+          onChange={(e) => setEditing(e.target.value.replace(/[^\d.,-]/g, '').slice(0, 6))}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commit();
+            if (e.key === 'Escape') setEditing(null);
+          }}
+          style={{ width: `${Math.max(3, editing.length + 1)}ch` }}
+        />
+      ) : (
+        <button
+          type="button"
+          className="value"
+          aria-label={label ? `${label}: ${format ? format(value) : value}, tap to type` : undefined}
+          onClick={onValueTap ?? (() => setEditing(String(value)))}
+        >
           {format ? format(value) : value}
         </button>
-      ) : (
-        <span className="value">{format ? format(value) : value}</span>
       )}
       <button type="button" aria-label="increase" onClick={() => onChange(clamp(value + step))}>+</button>
     </div>
